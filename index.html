@@ -1,0 +1,142 @@
+<!doctype html>
+<html lang="ru">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Emodji Magnet</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Noto+Color+Emoji&family=Inter:wght@400;500;600&display=swap" rel="stylesheet">
+<style>
+  :root {
+    --bg1: #0d0f1f;
+    --bg2: #1a1740;
+    --glass: rgba(255,255,255,.07);
+    --glass-b: rgba(255,255,255,.16);
+    --text: #f2f3ff;
+    --muted: #8d90b8;
+    --accent: #7c8cff;
+  }
+  * { box-sizing: border-box; }
+  html, body { margin: 0; height: 100%; overflow: hidden; }
+  body {
+    font-family: Inter, system-ui, "Segoe UI", sans-serif;
+    color: var(--text);
+    background: radial-gradient(1200px 700px at 50% 0%, var(--bg2), var(--bg1) 70%);
+  }
+  canvas#world { position: fixed; inset: 0; width: 100%; height: 100%; display: block; touch-action: none; }
+
+  #bar {
+    position: fixed; left: 50%; top: 15vh; transform: translateX(-50%);
+    width: min(920px, 82vw); z-index: 5;
+  }
+  #hint { font-size: 13px; color: var(--muted); margin: 0 6px 8px; display: flex; justify-content: space-between; min-height: 18px; }
+  #status { transition: color .2s; }
+  #status.err { color: #ff8a8a; }
+  #field {
+    width: 100%; font: 500 28px/1.25 Inter, system-ui, sans-serif; color: var(--text);
+    background: var(--glass); border: 1px solid var(--glass-b); border-bottom: none;
+    border-radius: 18px 18px 0 0; padding: 18px 24px; outline: none;
+    backdrop-filter: blur(14px); -webkit-backdrop-filter: blur(14px);
+    caret-color: var(--accent);
+  }
+  #field::placeholder { color: #6b6f9c; font-weight: 400; }
+  #field:focus { background: rgba(255,255,255,.1); }
+
+  #gear {
+    position: fixed; right: 18px; top: 16px; z-index: 6; width: 40px; height: 40px;
+    border-radius: 12px; border: 1px solid var(--glass-b); background: var(--glass);
+    color: var(--text); font-size: 18px; cursor: pointer;
+  }
+  #gear:hover { background: rgba(255,255,255,.14); }
+  #tip {
+    position: fixed; z-index: 6; pointer-events: none; padding: 5px 10px; border-radius: 8px;
+    background: rgba(10,12,30,.9); border: 1px solid var(--glass-b); font-size: 13px; opacity: 0;
+    transition: opacity .12s; white-space: nowrap;
+  }
+
+  #bubble {
+    position: fixed; z-index: 7; width: 340px; display: none; padding: 14px 16px;
+    background: rgba(18,20,48,.94); border: 1px solid var(--glass-b); border-radius: 16px;
+    backdrop-filter: blur(14px); box-shadow: 0 10px 40px rgba(0,0,0,.4);
+  }
+  #bubble.open { display: block; }
+  #bubble .bh { display: flex; align-items: center; gap: 10px; margin-bottom: 6px; }
+  #bEmoji { font: 26px "Noto Color Emoji","Segoe UI Emoji",sans-serif; }
+  #bVerdict { font-size: 12px; font-weight: 600; padding: 3px 9px; border-radius: 99px; background: var(--glass); color: var(--muted); }
+  #bVerdict.yes { background: rgba(80,220,140,.18); color: #7df0b0; }
+  #bVerdict.no { background: rgba(255,120,120,.18); color: #ff9a9a; }
+  #bClose { margin-left: auto; background: none; border: none; color: var(--muted); font-size: 20px; cursor: pointer; }
+  #bText { margin: 0 0 10px; font-size: 14px; line-height: 1.4; min-height: 20px; }
+  #bArg {
+    width: 100%; font: 13px Inter, sans-serif; color: var(--text); background: rgba(255,255,255,.06);
+    border: 1px solid var(--glass-b); border-radius: 10px; padding: 8px 10px; outline: none;
+  }
+  #bArg:focus { border-color: var(--accent); }
+  #loading {
+    position: fixed; inset: 0; z-index: 20; display: grid; place-items: center;
+    background: var(--bg1); color: var(--muted); font-size: 16px; transition: opacity .5s;
+  }
+  #loading.hide { opacity: 0; pointer-events: none; }
+
+  #modal { position: fixed; inset: 0; z-index: 30; display: none; place-items: center; background: rgba(5,6,18,.7); backdrop-filter: blur(6px); }
+  #modal.open { display: grid; }
+  #card {
+    width: min(460px, 92vw); background: #15173a; border: 1px solid var(--glass-b);
+    border-radius: 18px; padding: 24px; display: grid; gap: 12px;
+  }
+  #card h2 { margin: 0 0 4px; font-size: 18px; }
+  #card label { font-size: 12px; color: var(--muted); display: grid; gap: 6px; }
+  #card input {
+    font: 15px Inter, sans-serif; color: var(--text); background: rgba(255,255,255,.06);
+    border: 1px solid var(--glass-b); border-radius: 10px; padding: 11px 12px; outline: none;
+  }
+  #card input:focus { border-color: var(--accent); }
+  #card .row { display: flex; gap: 10px; justify-content: flex-end; margin-top: 6px; }
+  #card button {
+    font: 600 14px Inter, sans-serif; border-radius: 10px; padding: 10px 18px; cursor: pointer;
+    border: 1px solid var(--glass-b); background: transparent; color: var(--text);
+  }
+  #card button.primary { background: var(--accent); border-color: var(--accent); color: #0b0d24; }
+  #card small { color: var(--muted); font-size: 12px; line-height: 1.4; }
+</style>
+</head>
+<body>
+<canvas id="world"></canvas>
+
+<div id="bar">
+  <div id="hint"><span id="status">Напиши что-нибудь, например: что надеть зимой</span><span id="count"></span></div>
+  <input id="field" type="text" autocomplete="off" spellcheck="false" placeholder="Что хочешь найти?" autofocus>
+</div>
+
+<button id="gear" title="Настройки">⚙</button>
+<div id="tip"></div>
+<div id="bubble">
+  <div class="bh"><span id="bEmoji"></span><span id="bVerdict"></span><button id="bClose" title="Закрыть">×</button></div>
+  <p id="bText"></p>
+  <input id="bArg" type="text" autocomplete="off" spellcheck="false" placeholder="Argue back… (Enter)">
+</div>
+<div id="loading">Собираю эмодзи…</div>
+
+<div id="modal">
+  <div id="card">
+    <h2>Gemini API</h2>
+    <label>API-ключ
+      <input id="keyInput" type="password" placeholder="AIza…" autocomplete="off">
+    </label>
+    <label>Модель
+      <input id="modelInput" type="text" placeholder="gemini-2.5-flash">
+    </label>
+    <small>Ключ хранится только в этом браузере (localStorage) и уходит напрямую в Google.</small>
+    <div class="row">
+      <button id="cancelBtn">Закрыть</button>
+      <button id="saveBtn" class="primary">Сохранить</button>
+    </div>
+  </div>
+</div>
+
+<script src="matter.min.js"></script>
+<script src="emoji-data.js"></script>
+<script src="app.js"></script>
+</body>
+</html>
