@@ -236,6 +236,7 @@
       Body.setAngularVelocity(b, b.angularVelocity * 0.93 - ang * 0.012);
     }
     for (const rec of probe) {
+      if (now - rec.probeAt > 15000) { dropRec(rec); continue; } // safety net: never hang forever
       const b = rec.body;
       Sleeping.set(b, false);
       const ax = (rec.hold.x - b.position.x) * 0.012 - b.velocity.x * 0.3;
@@ -362,7 +363,7 @@
 
   function holdRec(rec, x, y) {
     rec.hold = { x, y };
-    rec.state = 'probe'; rec.target = bigR;
+    rec.state = 'probe'; rec.target = bigR; rec.probeAt = performance.now();
     const b = rec.body;
     b.collisionFilter.category = CAT_MAG;
     b.collisionFilter.mask = CAT_MAG | CAT_LINE | CAT_MOUSE;
@@ -395,14 +396,16 @@
     showBubble(rec, 'think', '');
     try {
       const v = await judge(text, rec);
+      // always settle the emoji, even if the user moved on meanwhile (else it hangs in the air)
+      if (field.value.trim() === text) applyVerdict(rec, v, wasActive);
+      else dropRec(rec);
       if (convo !== c) return;
       c.reason = v.reason;
       showBubble(rec, v.fits ? 'yes' : 'no', v.reason);
-      applyVerdict(rec, v, wasActive);
     } catch (e) {
+      if (!wasActive) dropRec(rec);
       if (convo !== c) return;
       showBubble(rec, 'no', 'Error: ' + e.message);
-      if (!wasActive) dropRec(rec);
     }
   }
 
@@ -523,9 +526,9 @@ At most MAX items; each item is a single emoji character; if the text is empty o
 
   const PROMPT_M = `You are the semantic engine of a mobile emoji picker. The user is typing a text line (any language).
 The user picks the obvious emojis by hand, so DO NOT return obvious ones. Return ONLY creative, lateral picks: emojis whose look can be read, logically and wittily, as relevant even though that is not their usual meaning. Examples: the sweating smiley fits "running" or "gym" (it is sweating from effort); the crying-laughing smiley fits "motorbike" (speed blows the tears sideways).
-Every item needs a defensible link; no random filler; return fewer (or none) rather than stretch. The text is cumulative: later words narrow earlier ones.
+Every item needs a defensible link. If there are not enough clever picks, fill up with emojis that are loosely or indirectly related (still avoid the most obvious ones). The text is cumulative: later words narrow earlier ones.
 Choose ONLY from this list: LIST
-At most MAX items, each a single emoji character copied from the list, best first. If the text is empty or meaningless return an empty array.`;
+Return between MIN and MAX items, each a single emoji character copied from the list, best first. If the text is empty or meaningless return an empty array.`;
 
   const JUDGE = `You judge whether an emoji fits the user's text. It fits if EITHER the link is obvious OR a creative, witty but logical reading of the emoji's look connects it to the text (e.g. the sweating smiley fits "running": it sweats from effort; the crying-laughing smiley fits "motorbike": speed blows the tears sideways). Be generous: accept whenever a defensible link exists; reject only when no logical link can be made.
 Reply as JSON {"fits": boolean, "reason": string}. The reason is in English, ONE short sentence, max 14 words, light wit welcome. If it fits, state the link; if not, state why it does not fit.`;
@@ -566,8 +569,11 @@ Reply as JSON {"fits": boolean, "reason": string}. The reason is in English, ONE
   }
 
   async function callGemini(text, signal) {
+    const prompt = MOBILE
+      ? PROMPT_M.replace('LIST', recs.map(r => r.c).join(' ')).replace('MIN', String(Math.min(perRow + 3, maxMatched)))
+      : PROMPT;
     const arr = await geminiJSON(
-      PROMPT.replace('MAX', String(maxMatched)) + '\n\nTEXT:\n' + text,
+      prompt.replace('MAX', String(maxMatched)) + '\n\nTEXT:\n' + text,
       { type: 'ARRAY', items: { type: 'STRING' } }, signal) || [];
     const seg = new Intl.Segmenter(undefined, { granularity: 'grapheme' });
     const out = [];
