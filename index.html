@@ -43,12 +43,49 @@
   #field::placeholder { color: #6b6f9c; font-weight: 400; }
   #field:focus { background: rgba(255,255,255,.1); }
 
-  #gear {
-    position: fixed; right: 18px; top: 16px; z-index: 6; width: 40px; height: 40px;
-    border-radius: 12px; border: 1px solid var(--glass-b); background: var(--glass);
-    color: var(--text); font-size: 18px; cursor: pointer;
+  #tools {
+    position: fixed; left: 16px; right: 16px; top: 16px; z-index: 6;
+    display: flex; justify-content: space-between; gap: 8px; pointer-events: none;
   }
-  #gear:hover { background: rgba(255,255,255,.14); }
+  #tools > div { display: flex; gap: 6px; pointer-events: auto; }
+  .tbtn {
+    height: 40px; min-width: 40px; padding: 0 12px; border-radius: 12px; border: 1px solid var(--glass-b);
+    background: var(--glass); color: var(--text); font: 500 14px Inter, sans-serif; cursor: pointer;
+    display: inline-flex; align-items: center; justify-content: center; gap: 6px; white-space: nowrap;
+    backdrop-filter: blur(10px); -webkit-backdrop-filter: blur(10px);
+  }
+  .tbtn:hover { background: rgba(255,255,255,.14); }
+  .tbtn.on { background: rgba(124,140,255,.28); border-color: var(--accent); }
+  #acts .tbtn { padding: 0; font-size: 17px; }
+
+  #histPanel {
+    position: fixed; z-index: 8; right: 16px; top: 64px; width: min(380px, calc(100vw - 20px));
+    max-height: 55vh; overflow-y: auto; display: none; padding: 6px;
+    background: rgba(18,20,48,.97); border: 1px solid var(--glass-b); border-radius: 14px;
+    box-shadow: 0 10px 40px rgba(0,0,0,.45);
+  }
+  #histPanel.open { display: block; }
+  .hitem {
+    width: 100%; display: grid; gap: 2px; text-align: left; padding: 9px 10px; border: none; border-radius: 10px;
+    background: transparent; color: var(--text); cursor: pointer; font: 14px Inter, sans-serif;
+  }
+  .hitem:hover { background: rgba(255,255,255,.07); }
+  .ht { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .he { font: 16px "Noto Color Emoji","Segoe UI Emoji",sans-serif; letter-spacing: 1px; }
+  .hempty { padding: 14px; color: var(--muted); font-size: 13px; }
+  .hclear { width: 100%; margin-top: 4px; padding: 8px; border: none; background: none; color: var(--muted); font: 12px Inter, sans-serif; cursor: pointer; }
+
+  #toast {
+    position: fixed; left: 50%; bottom: 24px; z-index: 40; transform: translate(-50%, 20px); opacity: 0;
+    padding: 10px 16px; border-radius: 12px; background: rgba(18,20,48,.95); border: 1px solid var(--glass-b);
+    font-size: 14px; max-width: calc(100vw - 40px); overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+    transition: opacity .2s, transform .2s; pointer-events: none;
+  }
+  #toast.show { opacity: 1; transform: translate(-50%, 0); }
+
+  @keyframes shake { 0%,100% { transform: translateX(0); } 20%,60% { transform: translateX(-8px); } 40%,80% { transform: translateX(8px); } }
+  #field.shake { animation: shake .35s; }
+  #field[readonly] { color: #c9cdf7; }
   #tip {
     position: fixed; z-index: 6; pointer-events: none; padding: 5px 10px; border-radius: 8px;
     background: rgba(10,12,30,.9); border: 1px solid var(--glass-b); font-size: 13px; opacity: 0;
@@ -73,6 +110,13 @@
     border: 1px solid var(--glass-b); border-radius: 10px; padding: 8px 10px; outline: none;
   }
   #bArg:focus { border-color: var(--accent); }
+  #bActions { display: flex; gap: 8px; flex-wrap: wrap; }
+  #bActions:not(:empty) { margin-top: 10px; }
+  #bActions button {
+    font: 600 13px Inter, sans-serif; padding: 8px 12px; border-radius: 10px; cursor: pointer;
+    border: 1px solid var(--glass-b); background: rgba(255,255,255,.06); color: var(--text);
+  }
+  #bActions button.primary { background: var(--accent); border-color: var(--accent); color: #0b0d24; }
   #loading {
     position: fixed; inset: 0; z-index: 20; display: grid; place-items: center;
     background: var(--bg1); color: var(--muted); font-size: 16px; transition: opacity .5s;
@@ -99,6 +143,9 @@
   }
   #card button.primary { background: var(--accent); border-color: var(--accent); color: #0b0d24; }
   #card small { color: var(--muted); font-size: 12px; line-height: 1.4; }
+  #card .opt { display: flex; align-items: center; gap: 10px; font-size: 14px; color: var(--text); cursor: pointer; }
+  #card .opt input { width: 18px; height: 18px; padding: 0; accent-color: var(--accent); }
+  body:not(.mobile) .mobileOnly { display: none !important; }
 
   /* ---- phone mode (desktop untouched) ---- */
   body.mobile canvas#world { inset: auto; left: 0; top: var(--vvt, 0px); width: 100%; height: var(--vvh, 100%); }
@@ -107,7 +154,10 @@
   body.mobile #count { display: none; }
   #ver { opacity: .35; margin-left: 8px; }
   body.mobile #field { font-size: 17px; padding: 11px 14px; border-radius: 14px 14px 0 0; }
-  body.mobile #gear { top: calc(var(--vvt, 0px) + 8px); right: 10px; width: 36px; height: 36px; }
+  body.mobile #tools { top: calc(var(--vvt, 0px) + 8px); left: 10px; right: 10px; }
+  body.mobile .tbtn { height: 36px; min-width: 36px; padding: 0; font-size: 17px; }
+  body.mobile #modes .tbtn span { display: none; }
+  body.mobile #histPanel { right: 10px; top: calc(var(--vvt, 0px) + 50px); }
   body.mobile #bubble { width: calc(100vw - 20px); padding: 11px 13px; }
   body.mobile #bArg { font-size: 16px; }
 </style>
@@ -116,16 +166,31 @@
 <canvas id="world"></canvas>
 
 <div id="bar">
-  <div id="hint"><span id="status">Напиши что-нибудь, например: что надеть зимой</span><span><span id="count"></span><span id="ver">v6</span></span></div>
+  <div id="hint"><span id="status">Напиши что-нибудь, например: что надеть зимой</span><span><span id="count"></span><span id="ver">v7</span></span></div>
   <input id="field" type="text" autocomplete="off" spellcheck="false" placeholder="Что хочешь найти?" autofocus>
 </div>
 
-<button id="gear" title="Настройки">⚙</button>
+<div id="tools">
+  <div id="modes">
+    <button class="tbtn on" data-mode="magnet" title="Магнит">🧲<span>Магнит</span></button>
+    <button class="tbtn" data-mode="story" title="Смайлик-история">📖<span>История</span></button>
+    <button class="tbtn" data-mode="defend" title="Защити смайлик">🛡️<span>Защити</span></button>
+    <button class="tbtn" data-mode="guess" title="Угадай слово">❓<span>Угадай</span></button>
+  </div>
+  <div id="acts">
+    <button class="tbtn" id="copyBtn" title="Скопировать смайлики">📋</button>
+    <button class="tbtn" id="histBtn" title="История запросов">🕘</button>
+    <button class="tbtn" id="gear" title="Настройки">⚙</button>
+  </div>
+</div>
+<div id="histPanel"></div>
+<div id="toast"></div>
 <div id="tip"></div>
 <div id="bubble">
   <div class="bh"><span id="bEmoji"></span><span id="bVerdict"></span><button id="bClose" title="Закрыть">×</button></div>
   <p id="bText"></p>
   <input id="bArg" type="text" autocomplete="off" spellcheck="false" placeholder="Argue back… (Enter)">
+  <div id="bActions"></div>
 </div>
 <div id="loading">Собираю эмодзи…</div>
 
@@ -139,6 +204,9 @@
       <input id="modelInput" type="text" placeholder="gemini-2.5-flash">
     </label>
     <small>Ключ хранится только в этом браузере (localStorage) и уходит напрямую в Google.</small>
+    <label class="opt"><input id="optSound" type="checkbox"> Звуки</label>
+    <label class="opt mobileOnly"><input id="optVibe" type="checkbox"> Вибрация</label>
+    <label class="opt mobileOnly"><input id="optTilt" type="checkbox"> Наклон телефона двигает кучу</label>
     <div class="row">
       <button id="cancelBtn">Закрыть</button>
       <button id="saveBtn" class="primary">Сохранить</button>
@@ -147,7 +215,7 @@
 </div>
 
 <script src="matter.min.js"></script>
-<script src="emoji-data.js?v=6"></script>
-<script src="app.js?v=6"></script>
+<script src="emoji-data.js?v=7"></script>
+<script src="app.js?v=7"></script>
 </body>
 </html>

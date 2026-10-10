@@ -46,6 +46,8 @@
   let W = 0, H = 0, dpr = 1;
   let lineY = 0, lineX = 0, lineW = 0;
   let bigR = 20, spacing = 42, perRow = 10, maxMatched = 50;
+  let mode = 'magnet'; // magnet | story | defend | guess
+  const ordered = () => mode === 'story' || mode === 'guess'; // emojis read left to right
 
   // ---------- physics ----------
   const engine = Engine.create({ enableSleeping: true, positionIterations: 6, velocityIterations: 4 });
@@ -81,6 +83,10 @@
 
   function slotPos(i) {
     const row = Math.floor(i / perRow), k = i % perRow;
+    if (ordered()) return {
+      x: lineX - (perRow - 1) / 2 * spacing + k * spacing,
+      y: lineY + 10 + spacing * 0.5 + row * spacing * 0.94,
+    };
     const off = k === 0 ? 0 : (k % 2 ? (k + 1) / 2 : -k / 2); // centre outward
     return {
       x: lineX + off * spacing + (perRow % 2 === 0 ? spacing / 2 : 0),
@@ -179,6 +185,18 @@
     }
 
     const n = wanted.size;
+    if (ordered()) { // story / hints: slot = position in the sequence
+      let k = 0;
+      for (const [rec, idx] of wanted) {
+        const p = slotPos(idx);
+        rec.slot = idx; rec.moved = false; rec.tx = p.x; rec.ty = p.y;
+        if (active.has(rec)) continue;
+        rec.state = 'in'; rec.target = bigR; rec.at = now + k++ * 70; rec.engaged = false; rec.arrived = false;
+        active.add(rec);
+      }
+      countEl.textContent = n ? `${n} шт.` : '';
+      return;
+    }
     const used = new Set();
     const movedRecs = [];
     for (const rec of active) { if (rec.moved) movedRecs.push(rec); else used.add(rec.slot); }
@@ -202,7 +220,7 @@
       if (active.has(rec)) continue;
       rec.slot = lowestFree(); used.add(rec.slot);
       rec.moved = false; rec.tx = slotPos(rec.slot).x; rec.ty = slotPos(rec.slot).y;
-      rec.state = 'in'; rec.target = bigR; rec.at = now + inIdx++ * 22; rec.engaged = false;
+      rec.state = 'in'; rec.target = bigR; rec.at = now + inIdx++ * 22; rec.engaged = false; rec.arrived = false;
       active.add(rec);
     }
     countEl.textContent = n ? `${n} шт.` : '';
@@ -210,6 +228,7 @@
 
   function applyForces(now) {
     const g = G();
+    const gx = engine.gravity.x * engine.gravity.scale; // phone tilt: only the heap feels it
     for (const rec of active) {
       const b = rec.body;
       if (now < rec.at) continue;
@@ -223,7 +242,8 @@
       }
       Sleeping.set(b, false);
       const dx = rec.tx - b.position.x, dy = rec.ty - b.position.y;
-      let ax = dx * 0.022 - b.velocity.x * 0.32;
+      if (!rec.arrived && Math.hypot(dx, dy) < bigR * 0.8) { rec.arrived = true; fx.attach(); }
+      let ax = dx * 0.022 - b.velocity.x * 0.32 - gx * 1000;
       let ay = dy * 0.022 - b.velocity.y * 0.30 - g * 1000; // cancel gravity
       const m = Math.hypot(ax, ay), cap = 9;
       if (m > cap) { ax *= cap / m; ay *= cap / m; }
@@ -239,7 +259,7 @@
       if (now - rec.probeAt > 15000) { dropRec(rec); continue; } // safety net: never hang forever
       const b = rec.body;
       Sleeping.set(b, false);
-      const ax = (rec.hold.x - b.position.x) * 0.012 - b.velocity.x * 0.3;
+      const ax = (rec.hold.x - b.position.x) * 0.012 - b.velocity.x * 0.3 - gx * 1000;
       const ay = (rec.hold.y - b.position.y) * 0.012 - b.velocity.y * 0.3 - g * 1000;
       b.force.x += b.mass * ax * 0.001;
       b.force.y += b.mass * ay * 0.001;
@@ -253,6 +273,7 @@
         b.collisionFilter.mask = CAT_PILE | CAT_MOUSE; // drops off the magnet, ignores the bar
         Sleeping.set(b, false);
         Body.setVelocity(b, { x: rand(-3.5, 3.5), y: rand(-1.5, 1) });
+        fx.drop();
         Body.setAngularVelocity(b, rand(-0.25, 0.25));
       }
       if (b.isSleeping && Math.abs(rec.cur - rec.target) < 0.05) rec.state = 'pile';
@@ -410,6 +431,7 @@
   }
 
   bArg.addEventListener('keydown', async (e) => {
+    if (e.key === 'Enter' && mode === 'defend') { game.defend(bArg.value.trim()); return; }
     if (e.key !== 'Enter' || !convo || !bArg.value.trim()) return;
     const c = convo, arg = bArg.value.trim();
     bArg.value = '';
@@ -430,6 +452,10 @@
   function onDragEnd(rec, moved) {
     const b = rec.body;
     if (probe.has(rec)) return;
+    if (mode === 'defend' || mode === 'guess') { // games: tap reopens the game panel, no judging
+      if (active.has(rec) && moved < 10) game.reopen();
+      return;
+    }
     const inBox = Math.abs(b.position.x - lineX) < lineW / 2 + 30 && b.position.y < zoneBottom(1);
     if (active.has(rec)) {
       if (moved < 10) pick(rec, false);
@@ -470,6 +496,7 @@
   function setupMouse() {
     let drag = null;
     canvas.addEventListener('pointerdown', (e) => {
+      fx.unlock();
       if (e.button !== undefined && e.button > 0) return;
       const p = toWorld(e);
       const rec = hitTest(p, e.pointerType === 'mouse' ? 1 : 14);
@@ -530,6 +557,10 @@ Every item needs a defensible link. If there are not enough clever picks, fill u
 Choose ONLY from this list: LIST
 Return between MIN and MAX items, each a single emoji character copied from the list, best first. If the text is empty or meaningless return an empty array.`;
 
+  const STORY = `Turn the user's text into a short emoji story: a sequence of emojis that tells it step by step, in chronological order, like a one-line comic strip.
+Creative, witty readings of an emoji's look are welcome (e.g. the sweating smiley = running late). Each emoji at most once.
+Return between MIN and MAX emojis, in story order. If the text is empty or meaningless return an empty array.`;
+
   const JUDGE = `You judge whether an emoji fits the user's text. It fits if EITHER the link is obvious OR a creative, witty but logical reading of the emoji's look connects it to the text (e.g. the sweating smiley fits "running": it sweats from effort; the crying-laughing smiley fits "motorbike": speed blows the tears sideways). Be generous: accept whenever a defensible link exists; reject only when no logical link can be made.
 Reply as JSON {"fits": boolean, "reason": string}. The reason is in English, ONE short sentence, max 14 words, light wit welcome. If it fits, state the link; if not, state why it does not fit.`;
 
@@ -569,9 +600,12 @@ Reply as JSON {"fits": boolean, "reason": string}. The reason is in English, ONE
   }
 
   async function callGemini(text, signal) {
-    const prompt = MOBILE
-      ? PROMPT_M.replace('LIST', recs.map(r => r.c).join(' ')).replace('MIN', String(Math.min(perRow + 3, maxMatched)))
-      : PROMPT;
+    const listNote = MOBILE ? '\nChoose ONLY from this list: ' + recs.map(r => r.c).join(' ') : '';
+    const prompt = mode === 'story'
+      ? STORY.replace('MIN', '5').replace('MAX', String(Math.min(16, maxMatched))) + listNote
+      : MOBILE
+        ? PROMPT_M.replace('LIST', recs.map(r => r.c).join(' ')).replace('MIN', String(Math.min(perRow + 3, maxMatched)))
+        : PROMPT;
     const arr = await geminiJSON(
       prompt.replace('MAX', String(maxMatched)) + '\n\nTEXT:\n' + text,
       { type: 'ARRAY', items: { type: 'STRING' } }, signal) || [];
@@ -609,14 +643,16 @@ Reply as JSON {"fits": boolean, "reason": string}. The reason is in English, ONE
     if (inflight) inflight.abort();
     if (text !== lastText) { forced.clear(); banned.clear(); lastText = text; }
     if (!text) { setResults([]); setStatus('Напиши что-нибудь, например: что надеть зимой'); return; }
-    if (cache.has(text)) { setResults(cache.get(text)); setStatus('Готово'); return; }
+    const key = mode + '|' + text;
+    if (cache.has(key)) { setResults(cache.get(key)); setStatus('Готово'); return; }
     const ac = inflight = new AbortController();
     setStatus('Думаю…');
     try {
       const list = DEMO ? demoPick(text) : await callGemini(text, ac.signal);
       if (ac.signal.aborted) return;
-      cache.set(text, list);
+      cache.set(key, list);
       setResults(list);
+      if (list.length) hist.add(text, list);
       setStatus(list.length ? 'Готово' : 'Ничего не нашлось');
     } catch (e) {
       if (e.name === 'AbortError') return;
@@ -626,18 +662,385 @@ Reply as JSON {"fits": boolean, "reason": string}. The reason is in English, ONE
 
   let timer = 0;
   field.addEventListener('input', () => {
+    if (mode === 'defend' || mode === 'guess') return;
     hideBubble();
     clearTimeout(timer);
     timer = setTimeout(() => run(field.value), 550);
   });
   field.addEventListener('keydown', (e) => {
-    if (e.key === 'Enter') { clearTimeout(timer); run(field.value); }
+    if (e.key !== 'Enter') return;
+    if (mode === 'guess') { game.guess(field.value); return; }
+    if (mode === 'defend') return;
+    clearTimeout(timer); run(field.value);
   });
 
+  // ---------- preferences ----------
+  const prefs = {
+    sound: store.get('opt_sound') !== '0',
+    vibe: store.get('opt_vibe') !== '0',
+    tilt: false,
+  };
+
+  // ---------- sound + vibration ----------
+  const fx = (() => {
+    let audio = null;
+    const last = {};
+    const ok = (k, gap) => { const t = performance.now(); if (t - (last[k] || 0) < gap) return false; last[k] = t; return true; };
+    function tone(f0, f1, dur, type, vol, delay = 0) {
+      if (!prefs.sound || !audio || audio.state !== 'running') return;
+      const t = audio.currentTime + delay;
+      const o = audio.createOscillator(), g = audio.createGain();
+      o.type = type; o.frequency.setValueAtTime(f0, t); o.frequency.exponentialRampToValueAtTime(f1, t + dur);
+      g.gain.setValueAtTime(0.0001, t); g.gain.exponentialRampToValueAtTime(vol, t + 0.008);
+      g.gain.exponentialRampToValueAtTime(0.0001, t + dur);
+      o.connect(g).connect(audio.destination); o.start(t); o.stop(t + dur + 0.02);
+    }
+    const buzz = (p) => { if (prefs.vibe && navigator.vibrate) try { navigator.vibrate(p); } catch {} };
+    return {
+      unlock() {
+        try {
+          if (!audio) audio = new (window.AudioContext || window.webkitAudioContext)();
+          if (audio.state === 'suspended') audio.resume();
+        } catch {}
+      },
+      attach() { if (ok('a', 45)) { tone(1500, 900, 0.05, 'triangle', 0.07); } if (ok('va', 90)) buzz(9); },
+      drop() { if (ok('d', 60)) tone(420, 130, 0.16, 'sine', 0.08); },
+      win() { [660, 880, 1320].forEach((f, i) => tone(f, f, 0.12, 'triangle', 0.08, i * 0.09)); buzz([15, 40, 15, 40, 30]); },
+      wrong() { tone(220, 150, 0.18, 'square', 0.04); buzz([25, 50, 25]); },
+    };
+  })();
+  window.addEventListener('keydown', () => fx.unlock(), { capture: true });
+
+  // ---------- phone tilt: moves only the heap ----------
+  const tilt = (() => {
+    let on = false, gx = 0, woke = 0;
+    function onOrient(e) {
+      if (e.gamma == null) return;
+      const target = clamp(Math.sin(e.gamma * Math.PI / 180) * 1.6, -1.1, 1.1);
+      gx += (target - gx) * 0.25;
+      engine.gravity.x = Math.abs(gx) < 0.06 ? 0 : gx;
+      if (Math.abs(gx - woke) > 0.06) { // sleeping bodies ignore gravity: wake the heap
+        woke = gx;
+        for (const rec of recs) if (rec.body && !active.has(rec) && !probe.has(rec)) Sleeping.set(rec.body, false);
+      }
+    }
+    function start() { if (!on) { on = true; window.addEventListener('deviceorientation', onOrient); } }
+    function stop() { on = false; window.removeEventListener('deviceorientation', onOrient); engine.gravity.x = 0; gx = 0; }
+    return {
+      set(want) {
+        prefs.tilt = want; store.set('opt_tilt', want ? '1' : '0');
+        if (!want || !MOBILE) { stop(); return; }
+        const D = window.DeviceOrientationEvent;
+        if (D && typeof D.requestPermission === 'function') { // iOS: must be asked from a tap
+          D.requestPermission().then(r => r === 'granted' ? start() : stop()).catch(stop);
+        } else start();
+      },
+      _start: start, // for testing
+      boot() {
+        const saved = store.get('opt_tilt');
+        const needsAsk = window.DeviceOrientationEvent && typeof DeviceOrientationEvent.requestPermission === 'function';
+        prefs.tilt = MOBILE && saved !== '0'; // on by default on phones
+        if (!prefs.tilt) return;
+        if (!needsAsk) { start(); return; }
+        // iOS (and some Chrome builds) ask for motion access: do it on the first tap
+        const ask = () => {
+          window.removeEventListener('pointerdown', ask, true);
+          DeviceOrientationEvent.requestPermission().then(r => r === 'granted' ? start() : (prefs.tilt = false)).catch(() => (prefs.tilt = false));
+        };
+        window.addEventListener('pointerdown', ask, true);
+      },
+    };
+  })();
+
+  // ---------- toast ----------
+  const toastEl = document.getElementById('toast');
+  let toastT = 0;
+  function toast(msg) {
+    toastEl.textContent = msg; toastEl.classList.add('show');
+    clearTimeout(toastT); toastT = setTimeout(() => toastEl.classList.remove('show'), 1600);
+  }
+
+  // ---------- copy the row ----------
+  function rowText() {
+    const rowH = spacing * 0.94;
+    return Array.from(active)
+      .map(r => ({ r, row: Math.round((r.ty - lineY - 10 - spacing * 0.5) / rowH), x: r.tx }))
+      .sort((a, b) => a.row - b.row || a.x - b.x)
+      .map(o => o.r.c).join('');
+  }
+  async function copyRow() {
+    const text = rowText();
+    if (!text) { toast('Нечего копировать'); return; }
+    let ok = false;
+    try { await navigator.clipboard.writeText(text); ok = true; } catch {}
+    if (!ok) {
+      const ta = document.createElement('textarea');
+      ta.value = text; ta.style.position = 'fixed'; ta.style.opacity = '0';
+      document.body.appendChild(ta); ta.select();
+      try { ok = document.execCommand('copy'); } catch {}
+      ta.remove();
+    }
+    toast(ok ? `Скопировано: ${text}` : 'Не получилось скопировать');
+    if (ok) fx.attach();
+  }
+  document.getElementById('copyBtn').addEventListener('click', copyRow);
+
+  // ---------- query history ----------
+  const histPanel = document.getElementById('histPanel');
+  const hist = {
+    load() { try { return JSON.parse(store.get('emodji_history') || '[]'); } catch { return []; } },
+    add(text, chars) {
+      if (mode !== 'magnet' && mode !== 'story') return;
+      const list = hist.load().filter(h => !(h.t === text && h.m === mode));
+      list.unshift({ t: text, m: mode, c: chars.slice(0, 40) });
+      store.set('emodji_history', JSON.stringify(list.slice(0, 25)));
+    },
+    render() {
+      const list = hist.load();
+      histPanel.innerHTML = '';
+      if (!list.length) { histPanel.innerHTML = '<div class="hempty">Пока пусто — попробуй что-нибудь написать</div>'; return; }
+      for (const h of list) {
+        const b = document.createElement('button');
+        b.className = 'hitem';
+        const t = document.createElement('span'); t.className = 'ht';
+        t.textContent = (h.m === 'story' ? '📖 ' : '') + h.t;
+        const e = document.createElement('span'); e.className = 'he';
+        e.textContent = h.c.slice(0, 10).join('');
+        b.append(t, e);
+        b.addEventListener('click', () => {
+          histPanel.classList.remove('open');
+          setMode(h.m);
+          field.value = h.t; lastText = h.t;
+          cache.set(h.m + '|' + h.t, h.c);
+          setResults(h.c); setStatus('Из истории');
+        });
+        histPanel.appendChild(b);
+      }
+      const clr = document.createElement('button');
+      clr.className = 'hclear'; clr.textContent = 'Очистить историю';
+      clr.addEventListener('click', () => { store.set('emodji_history', '[]'); hist.render(); });
+      histPanel.appendChild(clr);
+    },
+  };
+  document.getElementById('histBtn').addEventListener('click', (e) => {
+    e.stopPropagation();
+    if (histPanel.classList.toggle('open')) hist.render();
+  });
+  document.addEventListener('pointerdown', (e) => {
+    if (!histPanel.contains(e.target) && e.target.id !== 'histBtn') histPanel.classList.remove('open');
+  });
+
+  // ---------- game panel (reuses the bubble) ----------
+  const bActions = document.getElementById('bActions');
+  function showPanel({ emoji, pill, pillClass, text, input, actions }) {
+    convo = null;
+    bEmoji.textContent = emoji || '';
+    bVerdict.className = pillClass || '';
+    bVerdict.textContent = pill || '';
+    bText.textContent = text || '';
+    bArg.style.display = input ? '' : 'none';
+    if (input) { bArg.placeholder = input; bArg.disabled = false; }
+    bActions.innerHTML = '';
+    for (const a of actions || []) {
+      const b = document.createElement('button');
+      b.textContent = a.label; if (a.primary) b.className = 'primary';
+      b.addEventListener('click', a.fn);
+      bActions.appendChild(b);
+    }
+    placeBubble();
+    bubble.classList.add('open');
+  }
+  // plain magnet bubble: no game buttons, input visible
+  const _showBubble = showBubble;
+  showBubble = function (...a) { bActions.innerHTML = ''; bArg.style.display = ''; _showBubble(...a); };
+
+  const stats = {
+    get() { try { return JSON.parse(store.get('emodji_stats') || '{}'); } catch { return {}; } },
+    put(s) { store.set('emodji_stats', JSON.stringify(s)); },
+  };
+
+  const TOPICS = ['winter', 'the beach', 'outer space', 'cooking dinner', 'school', 'a wedding', 'football', 'the office',
+    'camping', 'a birthday party', 'rain', 'music', 'the cinema', 'an airport', 'the gym', 'a hospital', 'pizza',
+    'Monday morning', 'love', 'money', 'shopping', 'robots', 'dinosaurs', 'Halloween', 'New Year', 'fishing', 'coffee',
+    'sleep', 'an exam', 'video games', 'the ocean', 'a farm', 'superheroes', 'a job interview', 'a first date',
+    'a road trip', 'cats', 'the internet', 'the jungle', 'a traffic jam', 'a haircut', 'the dentist', 'a picnic'];
+  const CATEGORIES = ['food', 'animals', 'weather', 'sports', 'professions', 'household objects', 'transport', 'nature',
+    'holidays', 'music', 'clothes', 'places in a city', 'space', 'the sea', 'technology', 'feelings', 'body', 'fairy tales'];
+  const pickOne = (a) => a[Math.floor(Math.random() * a.length)];
+  const cleanWord = (s) => s.toLowerCase().replace(/ё/g, 'е').replace(/[^\p{L}\p{N} ]/gu, '').replace(/\s+/g, ' ').trim();
+  function lev(a, b) {
+    const d = Array.from({ length: a.length + 1 }, (_, i) => [i]);
+    for (let j = 1; j <= b.length; j++) d[0][j] = j;
+    for (let i = 1; i <= a.length; i++) for (let j = 1; j <= b.length; j++)
+      d[i][j] = Math.min(d[i - 1][j] + 1, d[i][j - 1] + 1, d[i - 1][j - 1] + (a[i - 1] === b[j - 1] ? 0 : 1));
+    return d[a.length][b.length];
+  }
+
+  const game = {
+    round: null,
+    reopen() { if (game.round && game.round.panel) game.round.panel(); },
+
+    // ---- Defend the emoji ----
+    newDefend() {
+      const pool = recs.filter(r => r.group !== 'Flags');
+      const rec = pickOne(pool), topic = pickOne(TOPICS);
+      field.value = 'Тема: ' + topic;
+      setResults([rec.c]);
+      const s = stats.get().defend || { rounds: 0, sum: 0, best: 0 };
+      setStatus(s.rounds ? `Раундов: ${s.rounds} · средний балл ${(s.sum / s.rounds).toFixed(1)} · рекорд ${s.best}` : 'Защити смайлик: докажи, что он подходит к теме');
+      const r = game.round = { kind: 'defend', rec, topic, done: false };
+      r.panel = () => showPanel({
+        emoji: rec.c, pill: 'defend it!', text: `Why does ${rec.c} fit “${topic}”? Be clever — logic and wit score points.`,
+        input: 'Your defence… (Enter)', actions: [{ label: 'Другой смайлик ↻', fn: () => game.newDefend() }],
+      });
+      r.panel();
+    },
+    async defend(arg) {
+      const r = game.round;
+      if (!r || r.kind !== 'defend' || r.done || !arg) return;
+      bArg.value = ''; bArg.disabled = true;
+      bVerdict.className = ''; bVerdict.textContent = 'judging…';
+      try {
+        let res;
+        if (DEMO) { await new Promise(x => setTimeout(x, 500)); res = { score: Math.min(10, 3 + Math.floor(arg.length / 12)), comment: 'Demo mode: nice try!' }; }
+        else res = await geminiJSON(`Game "Defend the emoji". Topic: "${r.topic}". Emoji: ${r.rec.c} (${r.rec.name}).
+The player argues why this emoji fits the topic. Player's defence: "${arg}"
+Score it 0-10 for logic, wit and creativity: a lazy or illogical defence scores low, a clever, witty reading of the emoji's look scores high.
+Reply JSON {"score": integer, "comment": string}. The comment is in simple English, ONE short friendly sentence, max 16 words.`,
+          { type: 'OBJECT', properties: { score: { type: 'INTEGER' }, comment: { type: 'STRING' } }, required: ['score', 'comment'] });
+        if (game.round !== r) return;
+        const score = clamp(Math.round(+res.score || 0), 0, 10);
+        r.done = true;
+        const all = stats.get(); const s = all.defend || { rounds: 0, sum: 0, best: 0 };
+        s.rounds++; s.sum += score; s.best = Math.max(s.best, score); all.defend = s; stats.put(all);
+        setStatus(`Раундов: ${s.rounds} · средний балл ${(s.sum / s.rounds).toFixed(1)} · рекорд ${s.best}`);
+        if (score >= 6) fx.win(); else fx.wrong();
+        r.panel = () => showPanel({
+          emoji: r.rec.c, pill: `${score}/10`, pillClass: score >= 6 ? 'yes' : 'no', text: res.comment,
+          actions: [{ label: 'Следующий раунд ▶', primary: true, fn: () => game.newDefend() }],
+        });
+        r.panel();
+      } catch (e) {
+        if (game.round !== r) return;
+        bArg.disabled = false;
+        bVerdict.className = 'no'; bVerdict.textContent = 'error'; bText.textContent = e.message;
+      }
+    },
+
+    // ---- Guess the word ----
+    async newGuess() {
+      const r = game.round = { kind: 'guess', loading: true };
+      field.value = ''; setResults([]);
+      setStatus('Загадываю слово…');
+      showPanel({ emoji: '❓', pill: 'thinking…', text: 'Picking a secret word…' });
+      try {
+        let res;
+        if (DEMO) res = { word: 'heart', accept: ['heart', 'сердце'], hints: recs.filter(x => x.name.includes('heart')).slice(0, 8).map(x => x.c) };
+        else {
+          const recent = (() => { try { return JSON.parse(store.get('emodji_recent_words') || '[]'); } catch { return []; } })();
+          const listNote = MOBILE ? '\nUse ONLY emojis from this list: ' + recs.map(x => x.c).join(' ') : '';
+          res = await geminiJSON(`Game "Guess the word by emojis". Secretly pick ONE common, concrete English noun from the category "${pickOne(CATEGORIES)}". Avoid: ${recent.join(', ') || 'nothing'}.
+Give 8 emoji hints ordered from the most creative / indirect (witty readings of an emoji's look are great) to the most obvious (the last ones almost give it away). Each hint is a single emoji, no repeats.${listNote}
+Also give "accept": all acceptable answers in lowercase — the word, close synonyms and plural, in English AND in Russian.
+Reply JSON {"word": string, "accept": [string], "hints": [string]}.`,
+            { type: 'OBJECT', properties: { word: { type: 'STRING' }, accept: { type: 'ARRAY', items: { type: 'STRING' } }, hints: { type: 'ARRAY', items: { type: 'STRING' } } }, required: ['word', 'accept', 'hints'] });
+          store.set('emodji_recent_words', JSON.stringify([res.word, ...recent].slice(0, 20)));
+        }
+        if (game.round !== r) return;
+        const seen = new Set();
+        r.hints = (res.hints || []).map(h => byChar.get(norm(String(h))))
+          .filter(x => x && !seen.has(x) && seen.add(x)).map(x => x.c);
+        if (r.hints.length < 3) throw new Error('не вышло подобрать подсказки, попробуй ещё');
+        r.word = String(res.word || '');
+        r.accept = [r.word, ...(res.accept || [])].map(cleanWord).filter(Boolean);
+        r.shown = Math.min(3, r.hints.length); r.wrong = 0; r.loading = false; r.done = false;
+        setResults(r.hints.slice(0, r.shown));
+        setStatus('Угадай слово по смайликам и напиши его в строке');
+        field.placeholder = 'Твой ответ… (Enter)';
+        r.panel = () => game.guessPanel();
+        r.panel();
+      } catch (e) {
+        if (game.round !== r) return;
+        setStatus('Ошибка: ' + e.message, true);
+        showPanel({ emoji: '❓', pill: 'error', pillClass: 'no', text: e.message, actions: [{ label: 'Ещё раз ↻', primary: true, fn: () => game.newGuess() }] });
+      }
+    },
+    points() { const r = game.round; return Math.max(1, 10 - (r.shown - 3) * 2 - r.wrong); },
+    guessPanel(extra) {
+      const r = game.round;
+      showPanel({
+        emoji: '❓', pill: `hint ${r.shown}/${r.hints.length}`,
+        text: (extra ? extra + ' ' : '') + `Guess the word! It's worth ${game.points()} points now.`,
+        actions: [
+          ...(r.shown < r.hints.length ? [{ label: '+ подсказка', fn: () => { r.shown++; setResults(r.hints.slice(0, r.shown)); game.guessPanel(); } }] : []),
+          { label: 'Сдаюсь', fn: () => game.endGuess(false) },
+        ],
+      });
+    },
+    guess(text) {
+      const r = game.round;
+      if (!r || r.kind !== 'guess' || r.loading || r.done) return;
+      const g = cleanWord(text);
+      if (!g) return;
+      const hit = r.accept.some(a => a === g || (a.length >= 5 && lev(a, g) <= 1));
+      if (hit) { game.endGuess(true); return; }
+      r.wrong++; fx.wrong();
+      field.classList.remove('shake'); void field.offsetWidth; field.classList.add('shake');
+      field.select();
+      game.guessPanel(`“${text.trim()}” — nope.`);
+    },
+    endGuess(won) {
+      const r = game.round;
+      r.done = true;
+      const pts = won ? game.points() : 0;
+      const all = stats.get(); const s = all.guess || { rounds: 0, wins: 0, points: 0 };
+      s.rounds++; if (won) s.wins++; s.points += pts; all.guess = s; stats.put(all);
+      setResults(r.hints);
+      if (won) fx.win();
+      setStatus(`Угадано ${s.wins} из ${s.rounds} · очков ${s.points}`);
+      r.panel = () => showPanel({
+        emoji: won ? '🎉' : '🙈', pill: won ? `+${pts}` : 'the word', pillClass: won ? 'yes' : 'no',
+        text: won ? `Yes! The word was “${r.word}”.` : `The word was “${r.word}”.`,
+        actions: [{ label: 'Новое слово ▶', primary: true, fn: () => game.newGuess() }],
+      });
+      r.panel();
+    },
+  };
+
+  // ---------- modes ----------
+  const PLACEHOLDER = { magnet: 'Что хочешь найти?', story: 'Расскажи историю: мой понедельник…', defend: '', guess: 'Твой ответ… (Enter)' };
+  const HINT = {
+    magnet: 'Напиши что-нибудь, например: что надеть зимой',
+    story: 'Напиши ситуацию — смайлики расскажут её по порядку',
+  };
+  function setMode(m) {
+    if (inflight) inflight.abort();
+    clearTimeout(timer);
+    mode = m;
+    document.querySelectorAll('#modes button').forEach(b => b.classList.toggle('on', b.dataset.mode === m));
+    hideBubble(); histPanel.classList.remove('open');
+    forced.clear(); banned.clear(); lastText = '';
+    game.round = null;
+    field.readOnly = m === 'defend';
+    field.value = '';
+    field.placeholder = PLACEHOLDER[m];
+    setResults([]);
+    setStatus(HINT[m] || '');
+    if (m === 'defend') game.newDefend();
+    if (m === 'guess') game.newGuess();
+    if (!MOBILE || m === 'magnet' || m === 'story' || m === 'guess') field.focus();
+  }
+  document.querySelectorAll('#modes button').forEach(b => b.addEventListener('click', () => { fx.unlock(); setMode(b.dataset.mode); }));
+  tilt.boot();
+
   // ---------- settings ----------
+  const optSound = document.getElementById('optSound');
+  const optVibe = document.getElementById('optVibe');
+  const optTilt = document.getElementById('optTilt');
   const openModal = () => {
     keyInput.value = store.get('gemini_key');
     modelInput.value = store.get('gemini_model');
+    optSound.checked = prefs.sound; optVibe.checked = prefs.vibe; optTilt.checked = prefs.tilt;
     modal.classList.add('open'); keyInput.focus();
   };
   const closeModal = () => { modal.classList.remove('open'); field.focus(); };
@@ -646,6 +1049,9 @@ Reply as JSON {"fits": boolean, "reason": string}. The reason is in English, ONE
   document.getElementById('saveBtn').addEventListener('click', () => {
     store.set('gemini_key', keyInput.value.trim());
     store.set('gemini_model', modelInput.value.trim());
+    prefs.sound = optSound.checked; prefs.vibe = optVibe.checked;
+    store.set('opt_sound', prefs.sound ? '1' : '0'); store.set('opt_vibe', prefs.vibe ? '1' : '0');
+    tilt.set(optTilt.checked); // inside the click: iOS asks for motion permission here
     cache.clear(); closeModal();
     if (field.value.trim()) run(field.value);
   });
@@ -696,7 +1102,7 @@ Reply as JSON {"fits": boolean, "reason": string}. The reason is in English, ONE
     setupMouse();
     loading.classList.add('hide');
     if (!store.get('gemini_key') && !DEMO) openModal();
-    window.__emodji = { recs, active, setResults, engine };
+    window.__emodji = { recs, active, setResults, engine, tilt };
     requestAnimationFrame(frame);
   })();
 })();
