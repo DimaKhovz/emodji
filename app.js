@@ -23,6 +23,21 @@
   const params = new URLSearchParams(location.search);
   const DEMO = params.get('demo') !== null; // ?demo — without API, for checking physics
 
+  const MOBILE = params.get('mobile') !== null || matchMedia('(max-width: 700px)').matches ||
+    (matchMedia('(pointer: coarse)').matches && Math.min(screen.width, screen.height) < 700);
+  document.body.classList.toggle('mobile', MOBILE);
+  const vv = window.visualViewport;
+  let offX = 0, offY = 0; // visual viewport offset (on-screen keyboard / pan)
+  function viewport() {
+    if (MOBILE && vv) {
+      offX = vv.offsetLeft; offY = vv.offsetTop;
+      const root = document.documentElement.style;
+      root.setProperty('--vvt', offY + 'px'); root.setProperty('--vvh', vv.height + 'px');
+      return { w: vv.width, h: vv.height };
+    }
+    return { w: window.innerWidth, h: window.innerHeight };
+  }
+
   const norm = (s) => s.replace(/️/g, '');
   const rand = (a, b) => a + Math.random() * (b - a);
   const clamp = (v, a, b) => Math.max(a, Math.min(b, v));
@@ -55,14 +70,14 @@
 
   function measure() {
     dpr = Math.min(window.devicePixelRatio || 1, 2);
-    W = window.innerWidth; H = window.innerHeight;
+    const vp = viewport(); W = vp.w; H = vp.h;
     canvas.width = Math.round(W * dpr); canvas.height = Math.round(H * dpr);
     const r = field.getBoundingClientRect();
-    lineX = r.left + r.width / 2; lineW = r.width; lineY = r.bottom;
-    bigR = clamp(lineW / 40, 15, 24);
+    lineX = r.left + r.width / 2 - offX; lineW = r.width; lineY = r.bottom - offY;
+    bigR = MOBILE ? 16 : clamp(lineW / 40, 15, 24);
     spacing = bigR * 2.08;
     perRow = Math.max(4, Math.floor((lineW - 24) / spacing));
-    maxMatched = Math.min(perRow * 5, 90);
+    maxMatched = MOBILE ? Math.min(perRow * 2, 20) : Math.min(perRow * 5, 90);
   }
 
   function slotPos(i) {
@@ -119,8 +134,8 @@
   }
 
   function initRecords(list) {
-    const area = W * H * 0.34;
-    r0 = clamp(Math.sqrt(area / (list.length * 1.25)) / 2, 8, 17);
+    const area = W * (MOBILE ? Math.min(H, 420) : H) * 0.34;
+    r0 = clamp(Math.sqrt(area / (list.length * 1.25)) / 2, MOBILE ? 7 : 8, MOBILE ? 10 : 17);
     list.forEach((e, i) => {
       const rec = { i, c: e[0], name: e[1], group: e[2], body: null, cur: r0, target: r0, state: 'pile', slot: -1, at: 0 };
       recs.push(rec);
@@ -268,7 +283,8 @@
       drawSprite(rec, 0.92);
     }
 
-    // magnet bar
+    // magnet bar (reset the transform left over from the sprites)
+    ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
     const glow = Math.min(1, active.size / 12);
     const gr = ctx.createLinearGradient(lineX - lineW / 2, 0, lineX + lineW / 2, 0);
     gr.addColorStop(0, 'rgba(124,140,255,0.15)');
@@ -325,8 +341,13 @@
   function placeBubble() {
     const rows = Math.ceil(Math.max(active.size, 1) / perRow);
     const top = lineY + 18 + rows * spacing * 0.94 + 14;
-    bubble.style.left = clamp(lineX - 170, 10, Math.max(10, W - 350)) + 'px';
-    bubble.style.top = Math.min(top, H * 0.5) + 'px';
+    if (MOBILE) {
+      bubble.style.left = (offX + 10) + 'px';
+      bubble.style.top = (offY + Math.min(top, Math.max(H - 175, lineY + 20))) + 'px';
+    } else {
+      bubble.style.left = clamp(lineX - 170, 10, Math.max(10, W - 350)) + 'px';
+      bubble.style.top = Math.min(top, H * 0.5) + 'px';
+    }
   }
 
   function showBubble(rec, state, reason) {
@@ -443,7 +464,7 @@
     mc.collisionFilter.category = CAT_MOUSE;
     Composite.add(world, mc);
     setupPicking();
-    window.addEventListener('mousemove', (e) => {
+    if (!MOBILE) window.addEventListener('mousemove', (e) => {
       const hit = Query.point(Array.from(active).map(r => r.body), { x: e.clientX, y: e.clientY })[0];
       if (hit && hit.rec) {
         tip.textContent = `${hit.rec.c}  ${hit.rec.name}`;
@@ -462,6 +483,12 @@ Return Unicode emojis that fit the WHOLE text, in two kinds:
 Order: the most obvious first, creative ones after them. Every item needs a defensible link; no random filler.
 The text is cumulative: later words narrow or modify the earlier ones (e.g. "what to wear" then "in winter" drops summer items).
 At most MAX items; each item is a single emoji character; if the text is empty or meaningless return an empty array.`;
+
+  const PROMPT_M = `You are the semantic engine of a mobile emoji picker. The user is typing a text line (any language).
+The user picks the obvious emojis by hand, so DO NOT return obvious ones. Return ONLY creative, lateral picks: emojis whose look can be read, logically and wittily, as relevant even though that is not their usual meaning. Examples: the sweating smiley fits "running" or "gym" (it is sweating from effort); the crying-laughing smiley fits "motorbike" (speed blows the tears sideways).
+Every item needs a defensible link; no random filler; return fewer (or none) rather than stretch. The text is cumulative: later words narrow earlier ones.
+Choose ONLY from this list: LIST
+At most MAX items, each a single emoji character copied from the list, best first. If the text is empty or meaningless return an empty array.`;
 
   const JUDGE = `You judge whether an emoji fits the user's text. It fits if EITHER the link is obvious OR a creative, witty but logical reading of the emoji's look connects it to the text (e.g. the sweating smiley fits "running": it sweats from effort; the crying-laughing smiley fits "motorbike": speed blows the tears sideways). Be generous: accept whenever a defensible link exists; reject only when no logical link can be made.
 Reply as JSON {"fits": boolean, "reason": string}. The reason is in English, ONE short sentence, max 14 words, light wit welcome. If it fits, state the link; if not, state why it does not fit.`;
@@ -583,7 +610,7 @@ Reply as JSON {"fits": boolean, "reason": string}. The reason is in English, ONE
 
   // ---------- resize ----------
   let rt = 0;
-  window.addEventListener('resize', () => {
+  function onResize() {
     clearTimeout(rt);
     rt = setTimeout(() => {
       measure(); buildStatics();
@@ -592,16 +619,25 @@ Reply as JSON {"fits": boolean, "reason": string}. The reason is in English, ONE
         else { const p = slotPos(rec.slot); rec.tx = p.x; rec.ty = p.y; }
       }
       for (const rec of recs) {
-        if (rec.body && (rec.body.position.x > W - 5 || rec.body.position.x < 5))
-          Body.setPosition(rec.body, { x: clamp(rec.body.position.x, 20, W - 20), y: rec.body.position.y });
+        const b = rec.body;
+        if (!b) continue;
+        const x = clamp(b.position.x, rec.cur + 2, W - rec.cur - 2);
+        let y = b.position.y;
+        if (y > H - rec.cur - 2) y = H - rec.cur - 2 - rand(0, 30); // floor moved up (keyboard)
+        if (x !== b.position.x || y !== b.position.y) Body.setPosition(b, { x, y });
+        if (MOBILE) Sleeping.set(b, false);
       }
-    }, 150);
-  });
+    }, MOBILE ? 60 : 150);
+  }
+  window.addEventListener('resize', onResize);
+  if (MOBILE && vv) { vv.addEventListener('resize', onResize); vv.addEventListener('scroll', onResize); }
 
   // ---------- boot ----------
   (async () => {
     measure();
-    const list = window.EMOJI_DATA;
+    const list = MOBILE
+      ? window.EMOJI_DATA.filter((e, i) => e[3] && i % 10 < 7) // main emojis only
+      : window.EMOJI_DATA;
     await buildAtlas(list);
     buildStatics();
     initRecords(list);

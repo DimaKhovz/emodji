@@ -2,7 +2,7 @@
 <html lang="ru">
 <head>
 <meta charset="utf-8">
-<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, viewport-fit=cover">
 <title>Emodji Magnet</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
@@ -99,6 +99,16 @@
   }
   #card button.primary { background: var(--accent); border-color: var(--accent); color: #0b0d24; }
   #card small { color: var(--muted); font-size: 12px; line-height: 1.4; }
+
+  /* ---- phone mode (desktop untouched) ---- */
+  body.mobile canvas#world { inset: auto; left: 0; top: var(--vvt, 0px); width: 100%; height: var(--vvh, 100%); }
+  body.mobile #bar { top: calc(var(--vvt, 0px) + 54px); width: calc(100vw - 20px); }
+  body.mobile #hint { font-size: 12px; margin-bottom: 5px; min-height: 15px; }
+  body.mobile #count { display: none; }
+  body.mobile #field { font-size: 17px; padding: 11px 14px; border-radius: 14px 14px 0 0; }
+  body.mobile #gear { top: calc(var(--vvt, 0px) + 8px); right: 10px; width: 36px; height: 36px; }
+  body.mobile #bubble { width: calc(100vw - 20px); padding: 11px 13px; }
+  body.mobile #bArg { font-size: 16px; }
 </style>
 </head>
 <body>
