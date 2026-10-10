@@ -1,5 +1,5 @@
 (() => {
-  const { Engine, Bodies, Body, Composite, Sleeping, Mouse, MouseConstraint, Query } = Matter;
+  const { Engine, Bodies, Body, Composite, Sleeping, Query } = Matter;
 
   // ---------- DOM ----------
   const canvas = document.getElementById('world');
@@ -63,7 +63,6 @@
   const probe = new Set();     // dropped near the bar, waiting for Gemini's verdict
   const forced = new Set();    // won the argument: stay magnetised for this query
   const banned = new Set();    // lost the argument: stay out for this query
-  let mc = null;
   let currentChars = [];
   let spawnQueue = [];
   let atlas, ATLAS_CELL = 64, ATLAS_COLS = 40;
@@ -425,45 +424,83 @@
   });
   document.getElementById('bClose').addEventListener('click', hideBubble);
 
-  function setupPicking() {
-    let down = null;
-    Matter.Events.on(mc, 'startdrag', (e) => {
-      const rec = e.body && e.body.rec;
-      if (rec) down = { rec, x: e.body.position.x, y: e.body.position.y, t: performance.now() };
-    });
-    Matter.Events.on(mc, 'enddrag', (e) => {
-      const rec = e.body && e.body.rec;
-      if (!rec || !down || down.rec !== rec) { down = null; return; }
-      const b = rec.body;
-      const moved = Math.hypot(b.position.x - down.x, b.position.y - down.y);
-      down = null;
-      if (probe.has(rec)) return;
-      const inBox = Math.abs(b.position.x - lineX) < lineW / 2 + 30 && b.position.y < zoneBottom(1);
-      if (active.has(rec)) {
-        if (moved < 10) pick(rec, false);
-        else if (inBox) { // dropped somewhere else under the bar: stays right there
-          rec.moved = true; rec.slot = -1;
-          rec.tx = clamp(b.position.x, lineX - lineW / 2 + bigR, lineX + lineW / 2 - bigR);
-          rec.ty = Math.max(b.position.y, lineY + bigR + 10);
-        }
-        return; // pulled far away: spring brings it back to where it was
+  function onDragEnd(rec, moved) {
+    const b = rec.body;
+    if (probe.has(rec)) return;
+    const inBox = Math.abs(b.position.x - lineX) < lineW / 2 + 30 && b.position.y < zoneBottom(1);
+    if (active.has(rec)) {
+      if (moved < 10) pick(rec, false);
+      else if (inBox) { // dropped somewhere else under the bar: stays right there
+        rec.moved = true; rec.slot = -1;
+        rec.tx = clamp(b.position.x, lineX - lineW / 2 + bigR, lineX + lineW / 2 - bigR);
+        rec.ty = Math.max(b.position.y, lineY + bigR + 10);
       }
-      const inZone = inBox && b.position.y > lineY;
-      if (inZone) { holdRec(rec, b.position.x, b.position.y); pick(rec, true); }
-      else if (moved < 10) pick(rec, false); // plain click: explain / judge
-    });
+      return; // pulled far away: spring brings it back to where it was
+    }
+    const inZone = inBox && b.position.y > lineY;
+    if (inZone) { holdRec(rec, b.position.x, b.position.y); pick(rec, true); }
+    else if (moved < 10) pick(rec, false); // plain tap/click: explain / judge
   }
 
-  // ---------- mouse ----------
+  // ---------- pointer (mouse + finger) ----------
+  // Own pointer handling instead of Matter's mouse: uses clientX/Y, so it stays
+  // correct on phones when the keyboard shifts the visual viewport.
+  function toWorld(e) {
+    const r = canvas.getBoundingClientRect();
+    return { x: e.clientX - r.left, y: e.clientY - r.top };
+  }
+
+  function hitTest(p, slop) {
+    let best = null, bestD = Infinity;
+    for (const rec of recs) {
+      const b = rec.body;
+      if (!b) continue;
+      const d = Math.hypot(b.position.x - p.x, b.position.y - p.y) - rec.cur;
+      if (d > slop) continue;
+      // magnetised / held ones are drawn on top: prefer them
+      const score = d - (active.has(rec) || probe.has(rec) ? 1000 : 0);
+      if (score < bestD) { bestD = score; best = rec; }
+    }
+    return best;
+  }
+
   function setupMouse() {
-    const mouse = Mouse.create(canvas);
-    mouse.pixelRatio = dpr;
-    mc = MouseConstraint.create(engine, {
-      mouse, constraint: { stiffness: 0.25, damping: 0.1, render: { visible: false } },
+    let drag = null;
+    canvas.addEventListener('pointerdown', (e) => {
+      if (e.button !== undefined && e.button > 0) return;
+      const p = toWorld(e);
+      const rec = hitTest(p, e.pointerType === 'mouse' ? 1 : 14);
+      if (!rec) return;
+      e.preventDefault(); // keep the keyboard / input focus
+      const b = rec.body;
+      Sleeping.set(b, false);
+      const con = Matter.Constraint.create({
+        pointA: p, bodyB: b,
+        pointB: { x: p.x - b.position.x, y: p.y - b.position.y },
+        stiffness: 0.25, damping: 0.1, length: 0,
+      });
+      con.angleB = b.angle;
+      Composite.add(world, con);
+      drag = { id: e.pointerId, rec, con, x: b.position.x, y: b.position.y };
+      try { canvas.setPointerCapture(e.pointerId); } catch {}
     });
-    mc.collisionFilter.category = CAT_MOUSE;
-    Composite.add(world, mc);
-    setupPicking();
+    canvas.addEventListener('pointermove', (e) => {
+      if (!drag || e.pointerId !== drag.id) return;
+      e.preventDefault();
+      drag.con.pointA = toWorld(e);
+      Sleeping.set(drag.rec.body, false);
+    });
+    const end = (e) => {
+      if (!drag || e.pointerId !== drag.id) return;
+      const { rec, con, x, y } = drag;
+      drag = null;
+      Composite.remove(world, con);
+      const b = rec.body;
+      onDragEnd(rec, Math.hypot(b.position.x - x, b.position.y - y));
+    };
+    canvas.addEventListener('pointerup', end);
+    canvas.addEventListener('pointercancel', end);
+
     if (!MOBILE) window.addEventListener('mousemove', (e) => {
       const hit = Query.point(Array.from(active).map(r => r.body), { x: e.clientX, y: e.clientY })[0];
       if (hit && hit.rec) {
@@ -613,7 +650,16 @@ Reply as JSON {"fits": boolean, "reason": string}. The reason is in English, ONE
   function onResize() {
     clearTimeout(rt);
     rt = setTimeout(() => {
+      const prevH = H;
       measure(); buildStatics();
+      if (MOBILE && H !== prevH) {
+        // keyboard opened/closed: move the whole heap with the floor instead of squashing it
+        const dy = H - prevH;
+        for (const rec of recs) {
+          if (!rec.body || active.has(rec) || probe.has(rec)) continue;
+          Body.setPosition(rec.body, { x: rec.body.position.x, y: rec.body.position.y + dy });
+        }
+      }
       for (const rec of active) {
         if (rec.moved) { rec.tx = clamp(rec.tx, lineX - lineW / 2 + bigR, lineX + lineW / 2 - bigR); rec.ty = Math.max(rec.ty, lineY + bigR + 10); }
         else { const p = slotPos(rec.slot); rec.tx = p.x; rec.ty = p.y; }

@@ -105,6 +105,7 @@
   body.mobile #bar { top: calc(var(--vvt, 0px) + 54px); width: calc(100vw - 20px); }
   body.mobile #hint { font-size: 12px; margin-bottom: 5px; min-height: 15px; }
   body.mobile #count { display: none; }
+  #ver { opacity: .35; margin-left: 8px; }
   body.mobile #field { font-size: 17px; padding: 11px 14px; border-radius: 14px 14px 0 0; }
   body.mobile #gear { top: calc(var(--vvt, 0px) + 8px); right: 10px; width: 36px; height: 36px; }
   body.mobile #bubble { width: calc(100vw - 20px); padding: 11px 13px; }
@@ -115,7 +116,7 @@
 <canvas id="world"></canvas>
 
 <div id="bar">
-  <div id="hint"><span id="status">Напиши что-нибудь, например: что надеть зимой</span><span id="count"></span></div>
+  <div id="hint"><span id="status">Напиши что-нибудь, например: что надеть зимой</span><span><span id="count"></span><span id="ver">v5</span></span></div>
   <input id="field" type="text" autocomplete="off" spellcheck="false" placeholder="Что хочешь найти?" autofocus>
 </div>
 
@@ -146,7 +147,7 @@
 </div>
 
 <script src="matter.min.js"></script>
-<script src="emoji-data.js"></script>
-<script src="app.js"></script>
+<script src="emoji-data.js?v=5"></script>
+<script src="app.js?v=5"></script>
 </body>
 </html>
