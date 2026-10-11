@@ -136,7 +136,7 @@
   #bSpeak { margin-left: auto; background: none; border: none; font-size: 16px; cursor: pointer; opacity: .8; padding: 0 4px; }
   #bSpeak + #bClose { margin-left: 0; }
   #bClose { margin-left: auto; background: none; border: none; color: var(--muted); font-size: 20px; cursor: pointer; }
-  #bText { margin: 0 0 10px; font-size: 14px; line-height: 1.4; min-height: 20px; }
+  #bText { white-space: pre-line; margin: 0 0 10px; font-size: 14px; line-height: 1.4; min-height: 20px; }
   #bArg {
     width: 100%; font: 13px Inter, sans-serif; color: var(--text); background: rgba(255,255,255,.06);
     border: 1px solid var(--glass-b); border-radius: 10px; padding: 8px 10px; outline: none;
@@ -198,7 +198,7 @@
 <canvas id="world"></canvas>
 
 <div id="bar">
-  <div id="hint"><span id="status">Напиши что-нибудь, например: что надеть зимой</span><span><span id="count"></span><span id="ver">v10</span></span></div>
+  <div id="hint"><span id="status">Напиши что-нибудь, например: что надеть зимой</span><span><span id="count"></span><span id="ver">v11</span></span></div>
   <input id="field" type="text" autocomplete="off" spellcheck="false" placeholder="Что хочешь найти?" autofocus>
 </div>
 
@@ -255,7 +255,7 @@
 </div>
 
 <script src="matter.min.js"></script>
-<script src="emoji-data.js?v=10"></script>
-<script src="app.js?v=10"></script>
+<script src="emoji-data.js?v=11"></script>
+<script src="app.js?v=11"></script>
 </body>
 </html>

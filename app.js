@@ -935,12 +935,13 @@ Reply as JSON {"fits": boolean, "reason": string}. The reason is in English, ONE
       bVerdict.className = ''; bVerdict.textContent = 'judging…';
       try {
         let res;
-        if (DEMO) { await new Promise(x => setTimeout(x, 500)); res = { score: Math.min(10, 3 + Math.floor(arg.length / 12)), comment: 'Demo mode: nice try!' }; }
+        if (DEMO) { await new Promise(x => setTimeout(x, 500)); res = { score: Math.min(10, 3 + Math.floor(arg.length / 12)), comment: 'Demo mode: nice try!', better: 'Demo mode: here the AI would give its own 10/10 defence.' }; }
         else res = await geminiJSON(`Game "Defend the emoji". Topic: "${r.topic}". Emoji: ${r.rec.c} (${r.rec.name}).
 The player argues why this emoji fits the topic. Player's defence: "${arg}"
 Score it 0-10 for logic, wit and creativity: a lazy or illogical defence scores low, a clever, witty reading of the emoji's look scores high.
-Reply JSON {"score": integer, "comment": string}. The comment is in simple English, ONE short friendly sentence, max 16 words.`,
-          { type: 'OBJECT', properties: { score: { type: 'INTEGER' }, comment: { type: 'STRING' } }, required: ['score', 'comment'] });
+Then write YOUR OWN best defence of this emoji for this topic: the cleverest, wittiest, most logical reading you can think of, the one you would give 10/10. Do not just repeat the player's idea; find a stronger or more surprising angle.
+Reply JSON {"score": integer, "comment": string, "better": string}. The comment is in simple English, ONE short friendly sentence, max 16 words. "better" is in simple English, 1-2 sentences, max 35 words, spoken as "I would say: ..." without that prefix.`,
+          { type: 'OBJECT', properties: { score: { type: 'INTEGER' }, comment: { type: 'STRING' }, better: { type: 'STRING' } }, required: ['score', 'comment', 'better'] });
         if (game.round !== r) return;
         const score = clamp(Math.round(+res.score || 0), 0, 10);
         r.done = true;
@@ -949,7 +950,8 @@ Reply JSON {"score": integer, "comment": string}. The comment is in simple Engli
         setStatus(`Раундов: ${s.rounds} · средний балл ${(s.sum / s.rounds).toFixed(1)} · рекорд ${s.best}`);
         if (score >= 6) fx.win(); else fx.wrong();
         r.panel = () => showPanel({
-          emoji: r.rec.c, pill: `${score}/10`, pillClass: score >= 6 ? 'yes' : 'no', text: res.comment,
+          emoji: r.rec.c, pill: `${score}/10`, pillClass: score >= 6 ? 'yes' : 'no',
+          text: res.comment + (res.better ? `\n\n💡 My 10/10 take:\n${res.better}` : ''),
           actions: [{ label: 'Следующий раунд ▶', primary: true, fn: () => game.newDefend() }],
         });
         r.panel();
