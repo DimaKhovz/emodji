@@ -67,7 +67,9 @@
   const banned = new Set();    // lost the argument: stay out for this query
   let currentChars = [];
   let spawnQueue = [];
-  let atlas, ATLAS_CELL = 64, ATLAS_COLS = 40;
+  let atlas, atlasCtx, atlasFamily, ATLAS_CELL = 64, ATLAS_COLS = 40;
+  const EXTRA_SLOTS = 80; // emojis summoned by search that were not in the heap
+  let listLen = 0, extraUsed = 0;
 
   function measure() {
     dpr = Math.min(window.devicePixelRatio || 1, 2);
@@ -117,10 +119,12 @@
     const family = '"Noto Color Emoji", "Segoe UI Emoji", "Apple Color Emoji", sans-serif';
     try { await document.fonts.load(`48px "Noto Color Emoji"`, list.map(e => e[0]).join('')); } catch {}
     try { await document.fonts.ready; } catch {}
-    const rows = Math.ceil(list.length / ATLAS_COLS);
+    listLen = list.length;
+    const rows = Math.ceil((list.length + EXTRA_SLOTS) / ATLAS_COLS);
     atlas = document.createElement('canvas');
     atlas.width = ATLAS_COLS * ATLAS_CELL; atlas.height = rows * ATLAS_CELL;
-    const a = atlas.getContext('2d');
+    const a = atlasCtx = atlas.getContext('2d');
+    atlasFamily = family;
     a.font = `46px ${family}`;
     a.textAlign = 'center'; a.textBaseline = 'middle';
     list.forEach((e, i) => {
@@ -255,6 +259,17 @@
       const ang = Math.atan2(Math.sin(b.angle), Math.cos(b.angle));
       Body.setAngularVelocity(b, b.angularVelocity * 0.93 - ang * 0.012);
     }
+    for (const rec of recs) { // found-by-search emojis: fly clear of the heap, then land normally
+      if (!rec.tossing) continue;
+      const b = rec.body;
+      if (b.velocity.y > -0.5 || now > rec.tossUntil) {
+        rec.tossing = false;
+        if (!active.has(rec)) { b.collisionFilter.category = CAT_PILE; b.collisionFilter.mask = CAT_PILE | CAT_MOUSE; }
+      }
+    }
+    for (const rec of recs) { // shrink back once the glow is over
+      if (rec.glowUntil && now > rec.glowUntil && !active.has(rec) && !probe.has(rec) && rec.target !== r0) { rec.target = r0; rec.glowUntil = 0; }
+    }
     for (const rec of probe) {
       if (now - rec.probeAt > 15000) { dropRec(rec); continue; } // safety net: never hang forever
       const b = rec.body;
@@ -300,7 +315,7 @@
     for (const rec of recs) {
       const b = rec.body;
       if (!b) continue;
-      if (active.has(rec) || probe.has(rec) || rec.state === 'out') { act.push(rec); continue; }
+      if (active.has(rec) || probe.has(rec) || rec.state === 'out' || rec.glowUntil > performance.now()) { act.push(rec); continue; }
       drawSprite(rec, 0.92);
     }
 
@@ -321,7 +336,17 @@
     ctx.restore();
 
     act.sort((a, b) => (active.has(a) || probe.has(a) ? 1 : 0) - (active.has(b) || probe.has(b) ? 1 : 0));
-    for (const rec of act) drawSprite(rec, 1);
+    for (const rec of act) {
+      drawSprite(rec, 1);
+      const left = rec.glowUntil - performance.now();
+      if (left > 0) { // "look here": pulsing ring around a found emoji
+        const b = rec.body, k = Math.min(1, left / 600), pulse = 1 + 0.12 * Math.sin(performance.now() / 110);
+        ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+        ctx.beginPath(); ctx.arc(b.position.x, b.position.y, rec.cur * 1.55 * pulse, 0, 6.283);
+        ctx.lineWidth = 2.5; ctx.strokeStyle = `rgba(255,236,150,${0.9 * k})`;
+        ctx.shadowColor = 'rgba(255,220,120,0.9)'; ctx.shadowBlur = 14 * k; ctx.stroke(); ctx.shadowBlur = 0;
+      }
+    }
   }
 
   function drawSprite(rec, alpha) {
@@ -1033,6 +1058,93 @@ Reply JSON {"word": string, "accept": [string], "hints": [string]}.`,
   document.querySelectorAll('#modes button').forEach(b => b.addEventListener('click', () => { fx.unlock(); setMode(b.dataset.mode); }));
   tilt.boot();
 
+
+  // ---------- search: toss a named emoji out of the heap ----------
+  const searchBar = document.getElementById('searchBar');
+  const searchInput = document.getElementById('searchInput');
+  const allEntries = new Map(window.EMOJI_DATA.map(e => [norm(e[0]), e]));
+
+  function ensureRec(ch) {
+    let rec = byChar.get(norm(ch));
+    if (rec) return rec;
+    const e = allEntries.get(norm(ch));
+    if (!e || extraUsed >= EXTRA_SLOTS || !atlasCtx) return null;
+    const i = listLen + extraUsed++;
+    atlasCtx.font = `46px ${atlasFamily}`; atlasCtx.textAlign = 'center'; atlasCtx.textBaseline = 'middle';
+    atlasCtx.fillText(e[0], (i % ATLAS_COLS) * ATLAS_CELL + ATLAS_CELL / 2, Math.floor(i / ATLAS_COLS) * ATLAS_CELL + ATLAS_CELL / 2 + 2);
+    rec = { i, c: e[0], name: e[1], group: e[2], body: null, cur: r0, target: r0, state: 'pile', slot: -1, at: 0 };
+    rec.body = makeBody(rand(r0 * 2, W - r0 * 2), H - r0 - rand(0, 20), r0);
+    rec.body.rec = rec;
+    rec.body.collisionFilter.category = CAT_MAG; rec.body.collisionFilter.mask = CAT_MAG | CAT_MOUSE; // appears inside the heap without a shove
+    Composite.add(world, rec.body);
+    recs.push(rec); byChar.set(norm(e[0]), rec);
+    return rec;
+  }
+
+  function toss(rec, delay) {
+    const now = performance.now() + delay;
+    rec.glowUntil = now + 3200; rec.target = r0 * 1.6;
+    if (active.has(rec) || probe.has(rec)) return; // already on the bar: the glow is enough
+    setTimeout(() => {
+      const b = rec.body;
+      if (!b || active.has(rec)) return;
+      const v = clamp(Math.sqrt(2 * 0.417 * Math.max(120, (H - lineY) * 0.55)), 10, 19); // apex roughly mid-screen
+      Sleeping.set(b, false);
+      b.collisionFilter.category = CAT_MAG; b.collisionFilter.mask = CAT_MAG | CAT_MOUSE;
+      rec.tossing = true; rec.tossUntil = performance.now() + 2500; rec.state = 'pile';
+      Body.setVelocity(b, { x: rand(-1.2, 1.2), y: -v });
+      Body.setAngularVelocity(b, rand(-0.3, 0.3));
+      fx.drop();
+    }, delay);
+  }
+
+  function localSearch(q) {
+    const words = q.toLowerCase().split(/\s+/).filter(Boolean);
+    if (!words.length) return [];
+    const scored = [];
+    for (const e of window.EMOJI_DATA) {
+      const n = e[1].toLowerCase();
+      if (!words.every(w => n.includes(w))) continue;
+      scored.push([n === words.join(' ') ? 0 : n.startsWith(words[0]) ? 1 : 2, n.length, e[0]]);
+    }
+    return scored.sort((a, b) => a[0] - b[0] || a[1] - b[1]).slice(0, 5).map(x => x[2]);
+  }
+
+  let searchSeq = 0;
+  async function runSearch(q) {
+    q = q.trim();
+    if (!q) return;
+    const seq = ++searchSeq;
+    let chars = [];
+    if (!DEMO && store.get('gemini_key')) {
+      try {
+        const arr = await geminiJSON(`The user looks for ONE specific emoji in a big pile and describes it with a word or short phrase (any language): "${q}".
+Return up to 4 real Unicode emojis that best match what they mean, the most exact match first. Single emoji characters only.`,
+          { type: 'ARRAY', items: { type: 'STRING' } });
+        const seg = new Intl.Segmenter(undefined, { granularity: 'grapheme' });
+        for (const item of arr || []) for (const { segment } of seg.segment(String(item))) chars.push(segment);
+      } catch (err) { /* fall back to the local name search */ }
+    }
+    if (seq !== searchSeq) return;
+    if (!chars.some(c => allEntries.has(norm(c)))) chars = localSearch(q);
+    const found = [];
+    for (const ch of chars) { const rec = ensureRec(ch); if (rec && !found.includes(rec)) found.push(rec); if (found.length >= 4) break; }
+    if (!found.length) { toast('Не нашёл такой смайлик'); return; }
+    found.forEach((rec, i) => toss(rec, i * 160));
+    toast('Смотри, где он подлетел: ' + found.map(r => r.c).join(' '));
+  }
+
+  let searchTimer = 0;
+  searchInput.addEventListener('input', () => { clearTimeout(searchTimer); searchTimer = setTimeout(() => runSearch(searchInput.value), 650); });
+  searchInput.addEventListener('keydown', (e) => {
+    if (e.key === 'Enter') { clearTimeout(searchTimer); runSearch(searchInput.value); }
+    if (e.key === 'Escape') closeSearch();
+  });
+  function openSearch() { fx.unlock(); searchBar.classList.add('open'); searchInput.value = ''; searchInput.focus(); }
+  function closeSearch() { searchBar.classList.remove('open'); searchInput.blur(); }
+  document.getElementById('searchBtn').addEventListener('click', openSearch);
+  document.getElementById('searchClose').addEventListener('click', closeSearch);
+
   // ---------- settings ----------
   const optSound = document.getElementById('optSound');
   const optVibe = document.getElementById('optVibe');
@@ -1102,7 +1214,7 @@ Reply JSON {"word": string, "accept": [string], "hints": [string]}.`,
     setupMouse();
     loading.classList.add('hide');
     if (!store.get('gemini_key') && !DEMO) openModal();
-    window.__emodji = { recs, active, setResults, engine, tilt };
+    window.__emodji = { recs, active, setResults, engine, tilt, runSearch };
     requestAnimationFrame(frame);
   })();
 })();
