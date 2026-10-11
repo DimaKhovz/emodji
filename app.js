@@ -460,6 +460,7 @@
     if (e.key !== 'Enter' || !convo || !bArg.value.trim()) return;
     const c = convo, arg = bArg.value.trim();
     bArg.value = '';
+    coach.check(arg, 'argument');
     const wasActive = active.has(c.rec);
     showBubble(c.rec, 'think', '');
     try {
@@ -527,6 +528,7 @@
       const rec = hitTest(p, e.pointerType === 'mouse' ? 1 : 14);
       if (!rec) return;
       e.preventDefault(); // keep the keyboard / input focus
+      fx.tap();
       const b = rec.body;
       Sleeping.set(b, false);
       const con = Matter.Constraint.create({
@@ -697,6 +699,7 @@ Reply as JSON {"fits": boolean, "reason": string}. The reason is in English, ONE
     if (mode === 'guess') { game.guess(field.value); return; }
     if (mode === 'defend') return;
     clearTimeout(timer); run(field.value);
+    coach.check(field.value, 'phrase', (fixed) => { field.value = fixed; run(fixed); });
   });
 
   // ---------- preferences ----------
@@ -704,6 +707,7 @@ Reply as JSON {"fits": boolean, "reason": string}. The reason is in English, ONE
     sound: store.get('opt_sound') !== '0',
     vibe: store.get('opt_vibe') !== '0',
     tilt: false,
+    shake: store.get('opt_shake') !== '0',
   };
 
   // ---------- sound + vibration ----------
@@ -728,10 +732,13 @@ Reply as JSON {"fits": boolean, "reason": string}. The reason is in English, ONE
           if (audio.state === 'suspended') audio.resume();
         } catch {}
       },
-      attach() { if (ok('a', 45)) { tone(1500, 900, 0.05, 'triangle', 0.07); } if (ok('va', 90)) buzz(9); },
-      drop() { if (ok('d', 60)) tone(420, 130, 0.16, 'sine', 0.08); },
-      win() { [660, 880, 1320].forEach((f, i) => tone(f, f, 0.12, 'triangle', 0.08, i * 0.09)); buzz([15, 40, 15, 40, 30]); },
-      wrong() { tone(220, 150, 0.18, 'square', 0.04); buzz([25, 50, 25]); },
+      get audio() { return audio; },
+      buzz,
+      tap() { if (ok('vt', 120)) buzz(18); },
+      attach() { if (ok('a', 45)) { tone(1500, 900, 0.05, 'triangle', 0.07); } if (ok('va', 110)) buzz(28); },
+      drop() { if (ok('d', 60)) tone(420, 130, 0.16, 'sine', 0.08); if (ok('vd', 150)) buzz(16); },
+      win() { [660, 880, 1320].forEach((f, i) => tone(f, f, 0.12, 'triangle', 0.08, i * 0.09)); buzz([40, 50, 40, 50, 90]); },
+      wrong() { tone(220, 150, 0.18, 'square', 0.04); buzz([60, 60, 60]); },
     };
   })();
   window.addEventListener('keydown', () => fx.unlock(), { capture: true });
@@ -806,7 +813,7 @@ Reply as JSON {"fits": boolean, "reason": string}. The reason is in English, ONE
       ta.remove();
     }
     toast(ok ? `Скопировано: ${text}` : 'Не получилось скопировать');
-    if (ok) fx.attach();
+    if (ok) { fx.attach(); fx.buzz([30, 40, 30]); }
   }
   document.getElementById('copyBtn').addEventListener('click', copyRow);
 
@@ -924,6 +931,7 @@ Reply as JSON {"fits": boolean, "reason": string}. The reason is in English, ONE
       const r = game.round;
       if (!r || r.kind !== 'defend' || r.done || !arg) return;
       bArg.value = ''; bArg.disabled = true;
+      coach.check(arg, 'defence');
       bVerdict.className = ''; bVerdict.textContent = 'judging…';
       try {
         let res;
@@ -1137,7 +1145,10 @@ Return up to 4 real Unicode emojis that best match what they mean, the most exac
   let searchTimer = 0;
   searchInput.addEventListener('input', () => { clearTimeout(searchTimer); searchTimer = setTimeout(() => runSearch(searchInput.value), 650); });
   searchInput.addEventListener('keydown', (e) => {
-    if (e.key === 'Enter') { clearTimeout(searchTimer); runSearch(searchInput.value); }
+    if (e.key === 'Enter') {
+      clearTimeout(searchTimer); runSearch(searchInput.value);
+      coach.check(searchInput.value, 'search', (fixed) => { searchInput.value = fixed; runSearch(fixed); });
+    }
     if (e.key === 'Escape') closeSearch();
   });
   function openSearch() { fx.unlock(); searchBar.classList.add('open'); searchInput.value = ''; searchInput.focus(); }
@@ -1145,14 +1156,235 @@ Return up to 4 real Unicode emojis that best match what they mean, the most exac
   document.getElementById('searchBtn').addEventListener('click', openSearch);
   document.getElementById('searchClose').addEventListener('click', closeSearch);
 
+
+  // ---------- English coach: correction + read aloud ----------
+  const tts = (() => {
+    const synthOk = 'speechSynthesis' in window && 'SpeechSynthesisUtterance' in window;
+    let voice = null;
+    function pickVoice() {
+      if (!synthOk) return;
+      const vs = speechSynthesis.getVoices();
+      voice = vs.find(v => /^en-US/i.test(v.lang) && /(natural|google|samantha|aria|jenny)/i.test(v.name))
+        || vs.find(v => /^en-US/i.test(v.lang)) || vs.find(v => /^en/i.test(v.lang)) || null;
+    }
+    if (synthOk) { pickVoice(); speechSynthesis.addEventListener && speechSynthesis.addEventListener('voiceschanged', pickVoice); }
+
+    const cache = new Map(); // text -> AudioBuffer
+    let src = null, seq = 0;
+    const TTS_MODEL = 'gemini-2.5-flash-preview-tts';
+
+    function browserSay(text) {
+      if (!synthOk) { toast('Озвучка не поддерживается в этом браузере'); return; }
+      speechSynthesis.cancel();
+      const u = new SpeechSynthesisUtterance(text);
+      u.lang = 'en-US'; u.rate = 0.9;
+      if (voice) u.voice = voice;
+      speechSynthesis.speak(u);
+    }
+
+    async function geminiBuffer(text) {
+      if (cache.has(text)) return cache.get(text);
+      const key = store.get('gemini_key');
+      if (!key) throw new Error('no key');
+      const model = store.get('gemini_tts_model') || TTS_MODEL;
+      const res = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/${encodeURIComponent(model)}:generateContent`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'x-goog-api-key': key },
+        body: JSON.stringify({
+          contents: [{ parts: [{ text: 'Say clearly, in a warm friendly American voice, a little slowly: ' + text }] }],
+          generationConfig: {
+            responseModalities: ['AUDIO'],
+            speechConfig: { voiceConfig: { prebuiltVoiceConfig: { voiceName: 'Kore' } } },
+          },
+        }),
+      });
+      if (!res.ok) throw new Error('tts ' + res.status);
+      const data = await res.json();
+      const part = data.candidates?.[0]?.content?.parts?.find(p => p.inlineData);
+      if (!part) throw new Error('no audio');
+      const bin = atob(part.inlineData.data);
+      const n = bin.length >> 1, f32 = new Float32Array(n);
+      for (let i = 0; i < n; i++) {
+        let v = bin.charCodeAt(2 * i) | (bin.charCodeAt(2 * i + 1) << 8);
+        if (v >= 32768) v -= 65536;
+        f32[i] = v / 32768;
+      }
+      const rate = +(/rate=(\d+)/.exec(part.inlineData.mimeType || '') || [0, 24000])[1];
+      fx.unlock();
+      const ctxA = fx.audio;
+      if (!ctxA) throw new Error('no audio context');
+      const buf = ctxA.createBuffer(1, n, rate);
+      buf.copyToChannel(f32, 0);
+      cache.set(text, buf);
+      return buf;
+    }
+
+    return {
+      ok: true,
+      async say(text) {
+        text = (text || '').trim();
+        if (!text) return;
+        const my = ++seq;
+        if (src) { try { src.stop(); } catch {} src = null; }
+        if (synthOk) speechSynthesis.cancel();
+        fx.unlock();
+        if (DEMO) { browserSay(text); return; }
+        toast('🔊 …');
+        try {
+          const buf = await geminiBuffer(text);
+          if (my !== seq) return;
+          const ctxA = fx.audio;
+          if (ctxA.state === 'suspended') await ctxA.resume();
+          src = ctxA.createBufferSource();
+          src.buffer = buf; src.connect(ctxA.destination); src.start();
+        } catch (e) {
+          if (my === seq) browserSay(text); // fall back to the phone's own voice
+        }
+      },
+    };
+  })();
+
+  const coachEl = document.getElementById('coach');
+  const coachTitle = document.getElementById('coachTitle');
+  const coachBody = document.getElementById('coachBody');
+  const coachActions = document.getElementById('coachActions');
+  let coachSeq = 0, coachTimer = 0;
+
+  function placeCoach() {
+    coachEl.style.left = clamp(MOBILE ? offX + 10 : (W - coachEl.offsetWidth) / 2, 10, Math.max(10, W - coachEl.offsetWidth - 10)) + 'px';
+    coachEl.style.top = (offY + H - coachEl.offsetHeight - 12) + 'px';
+  }
+  function hideCoach() { coachSeq++; clearTimeout(coachTimer); coachEl.classList.remove('open'); }
+  document.getElementById('coachClose').addEventListener('click', hideCoach);
+
+  function showCoach({ title, cls, html, actions, autoHide }) {
+    coachEl.className = 'open ' + (cls || '');
+    coachTitle.textContent = title;
+    coachBody.innerHTML = html;
+    coachActions.innerHTML = '';
+    for (const a of actions || []) {
+      const b = document.createElement('button');
+      b.textContent = a.label; if (a.primary) b.className = 'primary';
+      b.addEventListener('click', a.fn);
+      coachActions.appendChild(b);
+    }
+    placeCoach();
+    clearTimeout(coachTimer);
+    if (autoHide) coachTimer = setTimeout(() => coachEl.classList.remove('open'), autoHide);
+  }
+  const esc = (t) => String(t).replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
+  const looksEnglish = (t) => {
+    const letters = t.match(/\p{L}/gu) || [];
+    if (letters.length < 3) return false;
+    const latin = letters.filter(c => /[A-Za-z]/.test(c)).length;
+    return latin / letters.length > 0.8;
+  };
+
+  const coach = {
+    // text: what the user wrote; apply(corrected): optional, puts the fixed phrase back where it was typed
+    async check(text, kind, apply) {
+      text = (text || '').trim();
+      if (!looksEnglish(text)) return;
+      const seq = ++coachSeq;
+      try {
+        let r;
+        if (DEMO) {
+          await new Promise(x => setTimeout(x, 400));
+          const fixed = text.replace(/\bi\b/g, 'I').replace(/\bme go\b/i, 'I go');
+          r = fixed === text ? { ok: true, corrected: '', note: '' } : { ok: false, corrected: fixed, note: 'Demo: "I" is always a capital letter.' };
+        } else {
+          r = await geminiJSON(`You are a friendly English teacher. A Russian-speaking learner typed this ${kind === 'search' ? 'search query' : kind === 'defence' ? 'argument' : 'phrase'} in an emoji app: "${text}"
+Check grammar, spelling, word choice and naturalness. Ignore a missing capital letter at the start and missing final punctuation (it is a search box). Do not flag proper nouns or a single correctly spelled word.
+If it is correct and natural, reply ok=true. Otherwise ok=false, "corrected" = the natural corrected version keeping the meaning (as short as the original), "note" = ONE short sentence in simple English naming the main mistake (max 16 words).
+If the text is not English, reply ok=true.
+Reply JSON {"ok": boolean, "corrected": string, "note": string}.`,
+            { type: 'OBJECT', properties: { ok: { type: 'BOOLEAN' }, corrected: { type: 'STRING' }, note: { type: 'STRING' } }, required: ['ok', 'corrected', 'note'] });
+        }
+        if (seq !== coachSeq) return;
+        const speak = { label: '🔊 Listen', fn: () => tts.say(r.ok ? text : r.corrected) };
+        if (r.ok || !r.corrected || r.corrected.trim() === text) {
+          showCoach({ title: '✓ Nice English!', cls: 'good', html: `<div class="cfix">${esc(text)}</div>`, actions: tts.ok ? [speak] : [], autoHide: 4500 });
+          return;
+        }
+        const actions = [speak];
+        if (apply) actions.push({ label: '✔ Use it', primary: true, fn: () => { apply(r.corrected); hideCoach(); } });
+        showCoach({
+          title: '✏️ Better English', cls: 'fix',
+          html: `<div class="cold">${esc(text)}</div><div class="cfix">${esc(r.corrected)}</div><div class="cnote">${esc(r.note)}</div>`,
+          actions: tts.ok ? actions : actions.slice(1),
+        });
+      } catch (e) { /* the coach must never get in the way */ }
+    },
+  };
+  document.getElementById('bSpeak').addEventListener('click', () => tts.say(bText.textContent));
+
+
+  // ---------- shake the phone: the magnetised emojis fall (shake again to get them back) ----------
+  const shake = (() => {
+    let hits = [], cool = 0, undo = null, started = false;
+    function trigger() {
+      if (mode !== 'magnet' && mode !== 'story') return; // never mid-game
+      if (probe.size || convo) return;
+      const now = performance.now();
+      if (undo && now - undo.t < 9000 && active.size === 0) { // shake again: bring them back
+        for (const ch of undo.forced) { const r = byChar.get(norm(ch)); if (r) forced.add(r); }
+        setResults(undo.chars);
+        undo = null; toast('Смайлики вернулись'); fx.buzz([30, 40, 30]);
+        return;
+      }
+      if (!active.size) return;
+      undo = { t: now, chars: currentChars.slice(), forced: [...forced].map(r => r.c) };
+      forced.clear(); banned.clear();
+      setResults([]);
+      toast('Все упали! Тряхни ещё раз — вернутся');
+      fx.buzz([60, 40, 60, 40, 120]);
+    }
+    function onMotion(e) {
+      if (!prefs.shake) return;
+      const a = e.acceleration;
+      let mag;
+      if (a && a.x != null) mag = Math.hypot(a.x, a.y, a.z);
+      else {
+        const g = e.accelerationIncludingGravity;
+        if (!g || g.x == null) return;
+        mag = Math.abs(Math.hypot(g.x, g.y, g.z) - 9.8);
+      }
+      if (mag < 15) return;
+      const now = performance.now();
+      hits.push(now); hits = hits.filter(t => now - t < 900);
+      if (hits.length >= 4 && now > cool) { cool = now + 2000; hits = []; trigger(); }
+    }
+    function start() { if (started) return; started = true; window.addEventListener('devicemotion', onMotion); }
+    return {
+      trigger, onMotion,
+      boot() {
+        if (!MOBILE) return;
+        const DM = window.DeviceMotionEvent;
+        if (DM && typeof DM.requestPermission === 'function') { // iOS: ask on the first tap
+          const ask = () => {
+            window.removeEventListener('pointerdown', ask, true);
+            DM.requestPermission().then(r => { if (r === 'granted') start(); }).catch(() => {});
+          };
+          window.addEventListener('pointerdown', ask, true);
+        } else start();
+      },
+    };
+  })();
+  shake.boot();
+
   // ---------- settings ----------
   const optSound = document.getElementById('optSound');
   const optVibe = document.getElementById('optVibe');
   const optTilt = document.getElementById('optTilt');
+  const optShake = document.getElementById('optShake');
+  const ttsModelInput = document.getElementById('ttsModelInput');
+  const vibeNote = document.getElementById('vibeNote');
   const openModal = () => {
     keyInput.value = store.get('gemini_key');
     modelInput.value = store.get('gemini_model');
-    optSound.checked = prefs.sound; optVibe.checked = prefs.vibe; optTilt.checked = prefs.tilt;
+    optSound.checked = prefs.sound; optVibe.checked = prefs.vibe; optTilt.checked = prefs.tilt; optShake.checked = prefs.shake;
+    ttsModelInput.value = store.get('gemini_tts_model');
+    vibeNote.textContent = navigator.vibrate ? '' : 'Этот браузер не поддерживает вибрацию (на iPhone её нет вообще).';
     modal.classList.add('open'); keyInput.focus();
   };
   const closeModal = () => { modal.classList.remove('open'); field.focus(); };
@@ -1164,6 +1396,9 @@ Return up to 4 real Unicode emojis that best match what they mean, the most exac
     prefs.sound = optSound.checked; prefs.vibe = optVibe.checked;
     store.set('opt_sound', prefs.sound ? '1' : '0'); store.set('opt_vibe', prefs.vibe ? '1' : '0');
     tilt.set(optTilt.checked); // inside the click: iOS asks for motion permission here
+    prefs.shake = optShake.checked; store.set('opt_shake', prefs.shake ? '1' : '0');
+    store.set('gemini_tts_model', ttsModelInput.value.trim());
+    if (prefs.vibe) fx.buzz([50, 70, 50]); // test pulse so you can feel it works
     cache.clear(); closeModal();
     if (field.value.trim()) run(field.value);
   });
@@ -1214,7 +1449,7 @@ Return up to 4 real Unicode emojis that best match what they mean, the most exac
     setupMouse();
     loading.classList.add('hide');
     if (!store.get('gemini_key') && !DEMO) openModal();
-    window.__emodji = { recs, active, setResults, engine, tilt, runSearch };
+    window.__emodji = { recs, active, setResults, engine, tilt, runSearch, shake };
     requestAnimationFrame(frame);
   })();
 })();

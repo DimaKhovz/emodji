@@ -85,6 +85,26 @@
   }
   body.mobile #searchBar { top: calc(var(--vvt, 0px) + 8px); left: 10px; right: 10px; }
   body.mobile #searchInput { height: 36px; font-size: 16px; }
+  #coach {
+    position: fixed; z-index: 9; display: none; width: min(440px, calc(100vw - 20px)); padding: 12px 14px;
+    background: rgba(18,20,48,.97); border: 1px solid var(--glass-b); border-radius: 14px;
+    box-shadow: 0 10px 40px rgba(0,0,0,.45);
+  }
+  #coach.open { display: block; }
+  #coach .ch { display: flex; align-items: center; justify-content: space-between; font-size: 13px; font-weight: 600; margin-bottom: 6px; }
+  #coach.fix .ch { color: #ffd479; }
+  #coach.good .ch { color: #7df0b0; }
+  #coachClose { background: none; border: none; color: var(--muted); font-size: 20px; cursor: pointer; }
+  .cold { font-size: 14px; color: var(--muted); text-decoration: line-through; text-decoration-color: rgba(255,120,120,.7); }
+  .cfix { font-size: 16px; font-weight: 500; margin: 3px 0; }
+  .cnote { font-size: 13px; color: var(--muted); line-height: 1.4; }
+  #coachActions { display: flex; gap: 8px; margin-top: 10px; }
+  #coachActions:empty { display: none; }
+  #coachActions button {
+    font: 600 13px Inter, sans-serif; padding: 8px 12px; border-radius: 10px; cursor: pointer;
+    border: 1px solid var(--glass-b); background: rgba(255,255,255,.06); color: var(--text);
+  }
+  #coachActions button.primary { background: var(--accent); border-color: var(--accent); color: #0b0d24; }
   #toast {
     position: fixed; left: 50%; bottom: 24px; z-index: 40; transform: translate(-50%, 20px); opacity: 0;
     padding: 10px 16px; border-radius: 12px; background: rgba(18,20,48,.95); border: 1px solid var(--glass-b);
@@ -113,6 +133,8 @@
   #bVerdict { font-size: 12px; font-weight: 600; padding: 3px 9px; border-radius: 99px; background: var(--glass); color: var(--muted); }
   #bVerdict.yes { background: rgba(80,220,140,.18); color: #7df0b0; }
   #bVerdict.no { background: rgba(255,120,120,.18); color: #ff9a9a; }
+  #bSpeak { margin-left: auto; background: none; border: none; font-size: 16px; cursor: pointer; opacity: .8; padding: 0 4px; }
+  #bSpeak + #bClose { margin-left: 0; }
   #bClose { margin-left: auto; background: none; border: none; color: var(--muted); font-size: 20px; cursor: pointer; }
   #bText { margin: 0 0 10px; font-size: 14px; line-height: 1.4; min-height: 20px; }
   #bArg {
@@ -176,7 +198,7 @@
 <canvas id="world"></canvas>
 
 <div id="bar">
-  <div id="hint"><span id="status">Напиши что-нибудь, например: что надеть зимой</span><span><span id="count"></span><span id="ver">v8</span></span></div>
+  <div id="hint"><span id="status">Напиши что-нибудь, например: что надеть зимой</span><span><span id="count"></span><span id="ver">v10</span></span></div>
   <input id="field" type="text" autocomplete="off" spellcheck="false" placeholder="Что хочешь найти?" autofocus>
 </div>
 
@@ -197,9 +219,10 @@
 <div id="searchBar"><input id="searchInput" type="text" autocomplete="off" spellcheck="false" placeholder="Найти смайлик: мото, cat, пицца…"><button class="tbtn" id="searchClose" title="Закрыть">✕</button></div>
 <div id="histPanel"></div>
 <div id="toast"></div>
+<div id="coach"><div class="ch"><span id="coachTitle"></span><button id="coachClose" title="Закрыть">×</button></div><div id="coachBody"></div><div id="coachActions"></div></div>
 <div id="tip"></div>
 <div id="bubble">
-  <div class="bh"><span id="bEmoji"></span><span id="bVerdict"></span><button id="bClose" title="Закрыть">×</button></div>
+  <div class="bh"><span id="bEmoji"></span><span id="bVerdict"></span><button id="bSpeak" title="Listen">🔊</button><button id="bClose" title="Закрыть">×</button></div>
   <p id="bText"></p>
   <input id="bArg" type="text" autocomplete="off" spellcheck="false" placeholder="Argue back… (Enter)">
   <div id="bActions"></div>
@@ -216,9 +239,14 @@
       <input id="modelInput" type="text" placeholder="gemini-2.5-flash">
     </label>
     <small>Ключ хранится только в этом браузере (localStorage) и уходит напрямую в Google.</small>
+    <label>Модель озвучки (необязательно)
+      <input id="ttsModelInput" type="text" placeholder="gemini-2.5-flash-preview-tts">
+    </label>
     <label class="opt"><input id="optSound" type="checkbox"> Звуки</label>
     <label class="opt mobileOnly"><input id="optVibe" type="checkbox"> Вибрация</label>
     <label class="opt mobileOnly"><input id="optTilt" type="checkbox"> Наклон телефона двигает кучу</label>
+    <label class="opt mobileOnly"><input id="optShake" type="checkbox"> Встряхнуть — смайлики падают</label>
+    <small id="vibeNote"></small>
     <div class="row">
       <button id="cancelBtn">Закрыть</button>
       <button id="saveBtn" class="primary">Сохранить</button>
@@ -227,7 +255,7 @@
 </div>
 
 <script src="matter.min.js"></script>
-<script src="emoji-data.js?v=8"></script>
-<script src="app.js?v=8"></script>
+<script src="emoji-data.js?v=10"></script>
+<script src="app.js?v=10"></script>
 </body>
 </html>
