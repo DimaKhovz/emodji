@@ -193,13 +193,20 @@
   body.mobile #histPanel { right: 10px; top: calc(var(--vvt, 0px) + 50px); }
   body.mobile #bubble { width: calc(100vw - 20px); padding: 11px 13px; }
   body.mobile #bArg { font-size: 16px; }
+  /* masked like a password, but without the browser's password/card/address autofill bar */
+  .secret { -webkit-text-security: disc; }
+  .secret::placeholder { -webkit-text-security: none; }
+  /* settings window always fits above the on-screen keyboard and scrolls */
+  body.mobile #modal { top: var(--vvt, 0px); bottom: auto; height: var(--vvh, 100%); overflow-y: auto; align-items: start; padding: 8px 0; }
+  body.mobile #card { margin: 0 auto; padding: 16px; gap: 10px; }
+  body.mobile #card .row { position: sticky; bottom: -16px; margin: 4px -16px -16px; padding: 10px 16px; background: #15173a; border-top: 1px solid var(--glass-b); }
 </style>
 </head>
 <body>
 <canvas id="world"></canvas>
 
 <div id="bar">
-  <div id="hint"><span id="status">Напиши что-нибудь, например: что надеть зимой</span><span><span id="count"></span><span id="ver">v13</span></span></div>
+  <div id="hint"><span id="status">Напиши что-нибудь, например: что надеть зимой</span><span><span id="count"></span><span id="ver">v14</span></span></div>
   <input id="field" type="text" autocomplete="off" spellcheck="false" placeholder="Что хочешь найти?" autofocus>
 </div>
 
@@ -234,11 +241,11 @@
   <div id="card">
     <h2>Gemini API</h2>
     <label>Код доступа
-      <input id="accessInput" type="password" placeholder="Код от владельца приложения" autocomplete="off">
+      <input id="accessInput" class="secret" type="text" name="emodji-code-x" placeholder="Код от владельца приложения" autocomplete="off" autocapitalize="none" autocorrect="off" spellcheck="false" data-lpignore="true" data-1p-ignore data-form-type="other">
     </label>
     <small>Код выдал владелец приложения: с ним Gemini работает через его сервер, без твоего ключа.</small>
     <label>Или свой API-ключ Gemini
-      <input id="keyInput" type="password" placeholder="AIza…" autocomplete="off">
+      <input id="keyInput" class="secret" type="text" name="emodji-key-x" placeholder="AIza…" autocomplete="off" autocapitalize="none" autocorrect="off" spellcheck="false" data-lpignore="true" data-1p-ignore data-form-type="other">
     </label>
     <label>Модель
       <input id="modelInput" type="text" placeholder="gemini-2.5-flash">
@@ -264,7 +271,7 @@
 </div>
 
 <script src="matter.min.js"></script>
-<script src="emoji-data.js?v=13"></script>
-<script src="app.js?v=13"></script>
+<script src="emoji-data.js?v=14"></script>
+<script src="app.js?v=14"></script>
 </body>
 </html>
