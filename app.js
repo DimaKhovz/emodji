@@ -1386,6 +1386,21 @@ Reply JSON {"ok": boolean, "corrected": string, "note": string}.`,
   })();
   shake.boot();
 
+
+  // ---------- welcome / how-to (shown once after the first successful setup) ----------
+  const welcome = document.getElementById('welcome');
+  const setupHint = document.getElementById('setupHint');
+  document.getElementById('wDevice').textContent = MOBILE
+    ? 'На телефоне нейросеть подбирает только такие креативные смайлики. Очевидные ты добираешь сам: найди нужный в куче внизу и подтащи к строке (или найди через 🔍).'
+    : 'Сначала идут очевидные смайлики, дальше креативные. Любой другой можно добрать самому из кучи внизу.';
+  function showWelcome() { welcome.classList.add('open'); welcome.scrollTop = 0; }
+  function hideWelcome() { welcome.classList.remove('open'); store.set('seen_intro', '1'); field.focus(); }
+  function maybeIntro() {
+    if ((hasAccess() || params.get('intro') !== null) && !store.get('seen_intro')) showWelcome();
+  }
+  document.getElementById('wOk').addEventListener('click', hideWelcome);
+  document.getElementById('helpBtn').addEventListener('click', () => { closeModal(); showWelcome(); });
+
   // ---------- settings ----------
   const optSound = document.getElementById('optSound');
   const optVibe = document.getElementById('optVibe');
@@ -1405,7 +1420,8 @@ Reply JSON {"ok": boolean, "corrected": string, "note": string}.`,
     optSound.checked = prefs.sound; optVibe.checked = prefs.vibe; optTilt.checked = prefs.tilt; optShake.checked = prefs.shake;
     ttsModelInput.value = store.get('gemini_tts_model');
     vibeNote.textContent = navigator.vibrate ? '' : 'Этот браузер не поддерживает вибрацию (на iPhone её нет вообще).';
-    modal.classList.add('open'); keyInput.focus();
+    setupHint.classList.toggle('show', !hasAccess());
+    modal.classList.add('open'); if (hasAccess()) keyInput.focus(); else accessInput.focus();
   };
   const closeModal = () => { modal.classList.remove('open'); field.focus(); };
   document.getElementById('gear').addEventListener('click', openModal);
@@ -1427,6 +1443,7 @@ Reply JSON {"ok": boolean, "corrected": string, "note": string}.`,
     if (prefs.vibe) fx.buzz([50, 70, 50]); // test pulse so you can feel it works
     cache.clear(); closeModal();
     if (field.value.trim()) run(field.value);
+    maybeIntro();
   });
   modal.addEventListener('keydown', (e) => { if (e.key === 'Enter') document.getElementById('saveBtn').click(); if (e.key === 'Escape') closeModal(); });
 
@@ -1474,7 +1491,7 @@ Reply JSON {"ok": boolean, "corrected": string, "note": string}.`,
     initRecords(list);
     setupMouse();
     loading.classList.add('hide');
-    if (!hasAccess() && !DEMO) openModal();
+    if (!hasAccess() && !DEMO) openModal(); else maybeIntro();
     window.__emodji = { recs, active, setResults, engine, tilt, runSearch, shake };
     requestAnimationFrame(frame);
   })();

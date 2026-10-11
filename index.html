@@ -111,6 +111,29 @@
     border: 1px solid var(--glass-b); background: rgba(255,255,255,.06); color: var(--text);
   }
   #coachActions button.primary { background: var(--accent); border-color: var(--accent); color: #0b0d24; }
+  #setupHint { display: none; padding: 12px 14px; border-radius: 12px; background: rgba(124,140,255,.16);
+    border: 1px solid var(--accent); font-size: 14px; line-height: 1.45; }
+  #setupHint.show { display: block; }
+  #setupHint ol { margin: 6px 0 6px 20px; padding: 0; }
+  #setupHint span { color: var(--muted); font-size: 12px; }
+
+  #welcome { position: fixed; inset: 0; z-index: 35; display: none; place-items: center; background: rgba(5,6,18,.78);
+    backdrop-filter: blur(6px); overflow-y: auto; padding: 14px; }
+  #welcome.open { display: grid; }
+  #wcard { width: min(520px, 100%); max-height: 100%; overflow-y: auto; background: #15173a; border: 1px solid var(--glass-b);
+    border-radius: 20px; padding: 22px 22px 0; font-size: 14px; line-height: 1.5; }
+  #wcard h2 { margin: 0 0 8px; font-size: 20px; }
+  #wcard p { margin: 6px 0; }
+  .wlead { font-size: 15px; }
+  .wbox { margin: 12px 0; padding: 12px 14px; border-radius: 14px; background: rgba(255,214,120,.1); border: 1px solid rgba(255,214,120,.35); }
+  .wbox b:first-child { color: #ffd479; }
+  .wh { display: block; margin: 14px 0 4px; }
+  #wcard ul { margin: 0; padding-left: 20px; }
+  #wcard li { margin: 5px 0; }
+  .wrow { position: sticky; bottom: 0; margin: 12px -22px 0; padding: 12px 22px; background: #15173a; border-top: 1px solid var(--glass-b); }
+  #wOk { width: 100%; font: 600 15px Inter, sans-serif; padding: 12px; border-radius: 12px; border: none; cursor: pointer;
+    background: var(--accent); color: #0b0d24; }
+  body:not(.mobile) #wcard .mobileOnly { display: none; }
   #toast {
     position: fixed; left: 50%; bottom: 24px; z-index: 40; transform: translate(-50%, 20px); opacity: 0;
     padding: 10px 16px; border-radius: 12px; background: rgba(18,20,48,.95); border: 1px solid var(--glass-b);
@@ -212,7 +235,7 @@
 <canvas id="world"></canvas>
 
 <div id="bar">
-  <div id="hint"><span id="status">Напиши что-нибудь, например: что надеть зимой</span><span><span id="count"></span><span id="ver">v15</span></span></div>
+  <div id="hint"><span id="status">Напиши что-нибудь, например: что надеть зимой</span><span><span id="count"></span><span id="ver">v16</span></span></div>
   <input id="field" type="search" autocomplete="off" spellcheck="false" placeholder="Что хочешь найти?" autofocus>
 </div>
 
@@ -243,9 +266,43 @@
 </div>
 <div id="loading">Собираю эмодзи…</div>
 
+<div id="welcome">
+  <div id="wcard">
+    <h2>Добро пожаловать в Emodji Magnet 🧲</h2>
+    <p class="wlead">Пишешь любую фразу, а нейросеть подбирает смайлики и <b>примагничивает их к твоей строке</b>. Лишние отваливаются и падают обратно в кучу.</p>
+
+    <div class="wbox">
+      <b>✨ Главная фишка: смайлики здесь не только очевидные</b>
+      <p>Нейросеть ищет <b>креативные, остроумные связи</b>. Например, 😅 с каплей пота подойдёт к слову «бег» или «спортзал» (он же вспотел), а 😂 с мокрыми глазами к «мотоцикл» (слёзы летят от скорости). Если связь логичная, смайлик подходит.</p>
+      <p id="wDevice"></p>
+    </div>
+
+    <b class="wh">Что можно делать</b>
+    <ul>
+      <li><b>Печатай запрос</b> и жми Enter: смайлики примагнитятся к строке.</li>
+      <li><b>Тащи пальцем:</b> смайлик из кучи к строке, и нейросеть решит, подходит ли он. Если нет, объяснит почему, и с ней можно <b>поспорить</b>: логичный довод её переубедит.</li>
+      <li><b>Нажми на смайлик</b>, чтобы узнать, почему он тут.</li>
+      <li><b>Переставляй</b> прилипшие смайлики куда угодно под строкой.</li>
+      <li>🔍 найти смайлик в куче (он подлетит и подсветится), 📋 скопировать ряд в мессенджер, 🕘 история запросов.</li>
+      <li>Режимы сверху: 🧲 магнит, 📖 история из смайликов, 🛡️ «защити смайлик», ❓ «угадай слово».</li>
+      <li>Объяснения на <b>английском</b>: нейросеть поправит твой английский, а кнопка 🔊 произнесёт фразу.</li>
+      <li class="mobileOnly">Встряхни телефон, и смайлики упадут (ещё раз, и вернутся). Наклони, и куча пересыплется.</li>
+    </ul>
+    <div class="wrow"><button id="wOk" class="primary">Понятно, поехали!</button></div>
+  </div>
+</div>
+
 <div id="modal">
   <div id="card">
-    <h2>Gemini API</h2>
+    <h2>Настройки</h2>
+    <div id="setupHint">
+      <b>👋 Первый запуск. Всего два шага:</b>
+      <ol>
+        <li>Введи <b>код доступа</b>, который тебе дал владелец приложения.</li>
+        <li>Нажми <b>«Сохранить»</b> внизу.</li>
+      </ol>
+      <span>Свой ключ Gemini вводить не нужно: он уже спрятан на сервере владельца.</span>
+    </div>
     <label>Код доступа
       <input id="accessInput" class="secret" type="search" name="emodji-code-x" placeholder="Код от владельца приложения" autocomplete="off" autocapitalize="none" autocorrect="off" spellcheck="false" data-lpignore="true" data-1p-ignore data-form-type="other">
     </label>
@@ -261,6 +318,7 @@
       <input id="proxyInput" type="search" placeholder="https://….workers.dev" autocomplete="off">
     </label>
     <button id="forgetBtn" class="linkbtn" type="button">Забыть ключ и код на этом устройстве</button>
+    <button id="helpBtn" class="linkbtn" type="button">Как пользоваться приложением</button>
     <label>Модель озвучки (необязательно)
       <input id="ttsModelInput" type="search" placeholder="gemini-2.5-flash-preview-tts">
     </label>
@@ -277,7 +335,7 @@
 </div>
 
 <script src="matter.min.js"></script>
-<script src="emoji-data.js?v=15"></script>
-<script src="app.js?v=15"></script>
+<script src="emoji-data.js?v=16"></script>
+<script src="app.js?v=16"></script>
 </body>
 </html>
