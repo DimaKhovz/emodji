@@ -43,6 +43,12 @@
   #field::placeholder { color: #6b6f9c; font-weight: 400; }
   #field:focus { background: rgba(255,255,255,.1); }
 
+  /* type=search keeps Chrome's password/card/address bar off the keyboard; strip its native look */
+  input[type="search"] { -webkit-appearance: none; appearance: none; }
+  input[type="search"]::-webkit-search-cancel-button,
+  input[type="search"]::-webkit-search-decoration,
+  input[type="search"]::-webkit-search-results-button,
+  input[type="search"]::-webkit-search-results-decoration { display: none; -webkit-appearance: none; }
   #tools {
     position: fixed; left: 16px; right: 16px; top: 16px; z-index: 6;
     display: flex; justify-content: space-between; gap: 8px; pointer-events: none;
@@ -206,8 +212,8 @@
 <canvas id="world"></canvas>
 
 <div id="bar">
-  <div id="hint"><span id="status">Напиши что-нибудь, например: что надеть зимой</span><span><span id="count"></span><span id="ver">v14</span></span></div>
-  <input id="field" type="text" autocomplete="off" spellcheck="false" placeholder="Что хочешь найти?" autofocus>
+  <div id="hint"><span id="status">Напиши что-нибудь, например: что надеть зимой</span><span><span id="count"></span><span id="ver">v15</span></span></div>
+  <input id="field" type="search" autocomplete="off" spellcheck="false" placeholder="Что хочешь найти?" autofocus>
 </div>
 
 <div id="tools">
@@ -224,7 +230,7 @@
     <button class="tbtn" id="gear" title="Настройки">⚙</button>
   </div>
 </div>
-<div id="searchBar"><input id="searchInput" type="text" autocomplete="off" spellcheck="false" placeholder="Найти смайлик: мото, cat, пицца…"><button class="tbtn" id="searchClose" title="Закрыть">✕</button></div>
+<div id="searchBar"><input id="searchInput" type="search" autocomplete="off" spellcheck="false" placeholder="Найти смайлик: мото, cat, пицца…"><button class="tbtn" id="searchClose" title="Закрыть">✕</button></div>
 <div id="histPanel"></div>
 <div id="toast"></div>
 <div id="coach"><div class="ch"><span id="coachTitle"></span><button id="coachClose" title="Закрыть">×</button></div><div id="coachBody"></div><div id="coachActions"></div></div>
@@ -232,7 +238,7 @@
 <div id="bubble">
   <div class="bh"><span id="bEmoji"></span><span id="bVerdict"></span><button id="bSpeak" title="Listen">🔊</button><button id="bClose" title="Закрыть">×</button></div>
   <p id="bText"></p>
-  <input id="bArg" type="text" autocomplete="off" spellcheck="false" placeholder="Argue back… (Enter)">
+  <input id="bArg" type="search" autocomplete="off" spellcheck="false" placeholder="Argue back… (Enter)">
   <div id="bActions"></div>
 </div>
 <div id="loading">Собираю эмодзи…</div>
@@ -241,22 +247,22 @@
   <div id="card">
     <h2>Gemini API</h2>
     <label>Код доступа
-      <input id="accessInput" class="secret" type="text" name="emodji-code-x" placeholder="Код от владельца приложения" autocomplete="off" autocapitalize="none" autocorrect="off" spellcheck="false" data-lpignore="true" data-1p-ignore data-form-type="other">
+      <input id="accessInput" class="secret" type="search" name="emodji-code-x" placeholder="Код от владельца приложения" autocomplete="off" autocapitalize="none" autocorrect="off" spellcheck="false" data-lpignore="true" data-1p-ignore data-form-type="other">
     </label>
     <small>Код выдал владелец приложения: с ним Gemini работает через его сервер, без твоего ключа.</small>
     <label>Или свой API-ключ Gemini
-      <input id="keyInput" class="secret" type="text" name="emodji-key-x" placeholder="AIza…" autocomplete="off" autocapitalize="none" autocorrect="off" spellcheck="false" data-lpignore="true" data-1p-ignore data-form-type="other">
+      <input id="keyInput" class="secret" type="search" name="emodji-key-x" placeholder="AIza…" autocomplete="off" autocapitalize="none" autocorrect="off" spellcheck="false" data-lpignore="true" data-1p-ignore data-form-type="other">
     </label>
     <label>Модель
-      <input id="modelInput" type="text" placeholder="gemini-2.5-flash">
+      <input id="modelInput" type="search" placeholder="gemini-2.5-flash">
     </label>
     <small>Свой ключ хранится только в этом браузере и уходит напрямую в Google. Посмотреть или скопировать его после сохранения нельзя.</small>
     <label>Адрес сервера (обычно не нужно трогать)
-      <input id="proxyInput" type="text" placeholder="https://….workers.dev" autocomplete="off">
+      <input id="proxyInput" type="search" placeholder="https://….workers.dev" autocomplete="off">
     </label>
     <button id="forgetBtn" class="linkbtn" type="button">Забыть ключ и код на этом устройстве</button>
     <label>Модель озвучки (необязательно)
-      <input id="ttsModelInput" type="text" placeholder="gemini-2.5-flash-preview-tts">
+      <input id="ttsModelInput" type="search" placeholder="gemini-2.5-flash-preview-tts">
     </label>
     <label class="opt"><input id="optSound" type="checkbox"> Звуки</label>
     <label class="opt mobileOnly"><input id="optVibe" type="checkbox"> Вибрация</label>
@@ -271,7 +277,7 @@
 </div>
 
 <script src="matter.min.js"></script>
-<script src="emoji-data.js?v=14"></script>
-<script src="app.js?v=14"></script>
+<script src="emoji-data.js?v=15"></script>
+<script src="app.js?v=15"></script>
 </body>
 </html>
