@@ -134,6 +134,12 @@
   #wOk { width: 100%; font: 600 15px Inter, sans-serif; padding: 12px; border-radius: 12px; border: none; cursor: pointer;
     background: var(--accent); color: #0b0d24; }
   body:not(.mobile) #wcard .mobileOnly { display: none; }
+  #hint { align-items: center; gap: 8px; }
+  #status { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  #hint .hr { display: inline-flex; align-items: center; gap: 8px; flex-shrink: 0; }
+  #diffBtn { font: 600 12px Inter, sans-serif; padding: 4px 10px; border-radius: 99px; cursor: pointer; color: var(--text);
+    border: 1px solid var(--glass-b); background: var(--glass); }
+  #diffBtn.on { background: rgba(255,214,120,.18); border-color: rgba(255,214,120,.6); color: #ffd479; }
   #toast {
     position: fixed; left: 50%; bottom: 24px; z-index: 40; transform: translate(-50%, 20px); opacity: 0;
     padding: 10px 16px; border-radius: 12px; background: rgba(18,20,48,.95); border: 1px solid var(--glass-b);
@@ -235,7 +241,7 @@
 <canvas id="world"></canvas>
 
 <div id="bar">
-  <div id="hint"><span id="status">Напиши что-нибудь, например: что надеть зимой</span><span><span id="count"></span><span id="ver">v16</span></span></div>
+  <div id="hint"><span id="status">Напиши что-нибудь, например: что надеть зимой</span><span class="hr"><span id="count"></span><button id="diffBtn" type="button">😀 Очевидные</button></span></div>
   <input id="field" type="search" autocomplete="off" spellcheck="false" placeholder="Что хочешь найти?" autofocus>
 </div>
 
@@ -272,8 +278,8 @@
     <p class="wlead">Пишешь любую фразу, а нейросеть подбирает смайлики и <b>примагничивает их к твоей строке</b>. Лишние отваливаются и падают обратно в кучу.</p>
 
     <div class="wbox">
-      <b>✨ Главная фишка: смайлики здесь не только очевидные</b>
-      <p>Нейросеть ищет <b>креативные, остроумные связи</b>. Например, 😅 с каплей пота подойдёт к слову «бег» или «спортзал» (он же вспотел), а 😂 с мокрыми глазами к «мотоцикл» (слёзы летят от скорости). Если связь логичная, смайлик подходит.</p>
+      <b>✨ Главная фишка: креативные связи</b>
+      <p>Нейросеть умеет находить не только очевидные смайлики, но и <b>креативные, остроумные связи</b> (включаются кнопкой «✨ Креативные»). Например, 😅 с каплей пота подойдёт к слову «бег» или «спортзал» (он же вспотел), а 😂 с мокрыми глазами к «мотоцикл» (слёзы летят от скорости). Если связь логичная, смайлик подходит.</p>
       <p id="wDevice"></p>
     </div>
 
@@ -294,7 +300,7 @@
 
 <div id="modal">
   <div id="card">
-    <h2>Настройки</h2>
+    <h2>Настройки <small id="verNote" style="font-weight:400;color:var(--muted)">v17</small></h2>
     <div id="setupHint">
       <b>👋 Первый запуск. Всего два шага:</b>
       <ol>
@@ -335,7 +341,7 @@
 </div>
 
 <script src="matter.min.js"></script>
-<script src="emoji-data.js?v=16"></script>
-<script src="app.js?v=16"></script>
+<script src="emoji-data.js?v=17"></script>
+<script src="app.js?v=17"></script>
 </body>
 </html>

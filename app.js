@@ -51,6 +51,7 @@
   let lineY = 0, lineX = 0, lineW = 0;
   let bigR = 20, spacing = 42, perRow = 10, maxMatched = 50;
   let mode = 'magnet'; // magnet | story | defend | guess
+  let creative = (function () { try { return localStorage.getItem('opt_creative') === '1'; } catch (e) { return false; } })(); // false = obvious emojis (default)
   const ordered = () => mode === 'story' || mode === 'guess'; // emojis read left to right
 
   // ---------- physics ----------
@@ -74,6 +75,7 @@
   let atlas, atlasCtx, atlasFamily, ATLAS_CELL = 64, ATLAS_COLS = 40;
   const EXTRA_SLOTS = 80; // emojis summoned by search that were not in the heap
   let listLen = 0, extraUsed = 0;
+  const freeAtlasSlots = []; // atlas cells of evicted extras
 
   function measure() {
     dpr = Math.min(window.devicePixelRatio || 1, 2);
@@ -175,8 +177,10 @@
 
     currentChars = chars;
     const wanted = new Map();
+    evictIdleExtras(chars.length);
     const add = (ch) => {
-      const rec = byChar.get(norm(ch));
+      const rec = ensureRec(ch); // an emoji missing from the heap is summoned from the floor
+      if (rec) rec.lastUsed = now;
       if (rec && !banned.has(rec) && !wanted.has(rec) && wanted.size < maxMatched) wanted.set(rec, wanted.size);
     };
     forced.forEach(rec => add(rec.c));
@@ -582,13 +586,16 @@ Order: the most obvious first, creative ones after them. Every item needs a defe
 The text is cumulative: later words narrow or modify the earlier ones (e.g. "what to wear" then "in winter" drops summer items).
 At most MAX items; each item is a single emoji character; if the text is empty or meaningless return an empty array.`;
 
-  const PROMPT_M = `You are the semantic engine of a mobile emoji picker. The user is typing a text line (any language).
-The user picks the obvious emojis by hand, so DO NOT return obvious ones. Return ONLY creative, lateral picks: emojis whose look can be read, logically and wittily, as relevant even though that is not their usual meaning. Examples: the sweating smiley fits "running" or "gym" (it is sweating from effort); the crying-laughing smiley fits "motorbike" (speed blows the tears sideways).
-Every item needs a defensible link. If there are not enough clever picks, fill up with emojis that are loosely or indirectly related (still avoid the most obvious ones). The text is cumulative: later words narrow earlier ones.
-Choose ONLY from this list: LIST
-Return between MIN and MAX items, each a single emoji character copied from the list, best first. If the text is empty or meaningless return an empty array.`;
+  const PROMPT_OBV = `You are the semantic engine of an emoji picker. The user is typing a text line (any language).
+Return the Unicode emojis that are directly and clearly relevant to the WHOLE text: the obvious, recognizable choices a normal person would expect (objects, people, animals, places, actions and symbols that literally belong to the topic). No far-fetched or joking links.
+Order from the most to the least relevant. The text is cumulative: later words narrow or modify the earlier ones (e.g. "what to wear" then "in winter" drops summer items).
+At most MAX items; each item is a single emoji character; if the text is empty or meaningless return an empty array.`;
 
   const STORY = `Turn the user's text into a short emoji story: a sequence of emojis that tells it step by step, in chronological order, like a one-line comic strip.
+Use clear, recognizable emojis (obvious choices). Each emoji at most once.
+Return between MIN and MAX emojis, in story order. If the text is empty or meaningless return an empty array.`;
+
+  const STORY_C = `Turn the user's text into a short emoji story: a sequence of emojis that tells it step by step, in chronological order, like a one-line comic strip.
 Creative, witty readings of an emoji's look are welcome (e.g. the sweating smiley = running late). Each emoji at most once.
 Return between MIN and MAX emojis, in story order. If the text is empty or meaningless return an empty array.`;
 
@@ -640,12 +647,9 @@ Reply as JSON {"fits": boolean, "reason": string}. The reason is in English, ONE
   }
 
   async function callGemini(text, signal) {
-    const listNote = MOBILE ? '\nChoose ONLY from this list: ' + recs.map(r => r.c).join(' ') : '';
     const prompt = mode === 'story'
-      ? STORY.replace('MIN', '5').replace('MAX', String(Math.min(16, maxMatched))) + listNote
-      : MOBILE
-        ? PROMPT_M.replace('LIST', recs.map(r => r.c).join(' ')).replace('MIN', String(Math.min(perRow + 3, maxMatched)))
-        : PROMPT;
+      ? (creative ? STORY_C : STORY).replace('MIN', '5').replace('MAX', String(Math.min(16, maxMatched)))
+      : creative ? PROMPT : PROMPT_OBV;
     const arr = await geminiJSON(
       prompt.replace('MAX', String(maxMatched)) + '\n\nTEXT:\n' + text,
       { type: 'ARRAY', items: { type: 'STRING' } }, signal) || [];
@@ -683,7 +687,7 @@ Reply as JSON {"fits": boolean, "reason": string}. The reason is in English, ONE
     if (inflight) inflight.abort();
     if (text !== lastText) { forced.clear(); banned.clear(); lastText = text; }
     if (!text) { setResults([]); setStatus('Напиши что-нибудь, например: что надеть зимой'); return; }
-    const key = mode + '|' + text;
+    const key = mode + '|' + (creative ? 'c' : 'o') + '|' + text;
     if (cache.has(key)) { setResults(cache.get(key)); setStatus('Готово'); return; }
     const ac = inflight = new AbortController();
     setStatus('Думаю…');
@@ -856,7 +860,7 @@ Reply as JSON {"fits": boolean, "reason": string}. The reason is in English, ONE
           histPanel.classList.remove('open');
           setMode(h.m);
           field.value = h.t; lastText = h.t;
-          cache.set(h.m + '|' + h.t, h.c);
+          cache.set(h.m + '|' + (creative ? 'c' : 'o') + '|' + h.t, h.c);
           setResults(h.c); setStatus('Из истории');
         });
         histPanel.appendChild(b);
@@ -926,9 +930,23 @@ Reply as JSON {"fits": boolean, "reason": string}. The reason is in English, ONE
     reopen() { if (game.round && game.round.panel) game.round.panel(); },
 
     // ---- Defend the emoji ----
-    newDefend() {
-      const pool = recs.filter(r => r.group !== 'Flags');
-      const rec = pickOne(pool), topic = pickOne(TOPICS);
+    async newDefend() {
+      let rec = null, topic = '';
+      const tok = game.round = { kind: 'defend', loading: true };
+      if (!creative && !DEMO) { // easy: the AI picks a pair that has a defendable link
+        showPanel({ emoji: '🛡️', pill: 'thinking…', text: 'Picking a topic and an emoji…' });
+        try {
+          const p = await geminiJSON(`Game "Defend the emoji". Pick a fun everyday topic (not one of: ${TOPICS.slice(0, 8).join(', ')}) and ONE emoji that fits it only loosely or indirectly: there is a clear defendable link, but the player has to put it into words. The emoji must not be the most obvious one for the topic.
+Reply JSON {"topic": string, "emoji": string}. The topic is 1-4 simple English words.`,
+            { type: 'OBJECT', properties: { topic: { type: 'STRING' }, emoji: { type: 'STRING' } }, required: ['topic', 'emoji'] });
+          rec = ensureRec(String(p.emoji || '').trim()); topic = String(p.topic || '').trim();
+        } catch (e) { rec = null; }
+        if (game.round !== tok || mode !== 'defend') return;
+      }
+      if (!rec || !topic) {
+        const pool = recs.filter(r => r.group !== 'Flags');
+        rec = pickOne(pool); topic = pickOne(TOPICS);
+      }
       field.value = 'Тема: ' + topic;
       setResults([rec.c]);
       const s = stats.get().defend || { rounds: 0, sum: 0, best: 0 };
@@ -986,9 +1004,8 @@ Reply JSON {"score": integer, "comment": string, "better": string}. The comment 
         if (DEMO) res = { word: 'heart', accept: ['heart', 'сердце'], hints: recs.filter(x => x.name.includes('heart')).slice(0, 8).map(x => x.c) };
         else {
           const recent = (() => { try { return JSON.parse(store.get('emodji_recent_words') || '[]'); } catch { return []; } })();
-          const listNote = MOBILE ? '\nUse ONLY emojis from this list: ' + recs.map(x => x.c).join(' ') : '';
           res = await geminiJSON(`Game "Guess the word by emojis". Secretly pick ONE common, concrete English noun from the category "${pickOne(CATEGORIES)}". Avoid: ${recent.join(', ') || 'nothing'}.
-Give 8 emoji hints ordered from the most creative / indirect (witty readings of an emoji's look are great) to the most obvious (the last ones almost give it away). Each hint is a single emoji, no repeats.${listNote}
+${creative ? "Give 8 emoji hints ordered from the most creative / indirect (witty readings of an emoji's look are great) to the most obvious (the last ones almost give it away)." : 'Give 8 emoji hints that are plain, recognizable emojis directly related to the word (typical objects, actions, places, things it is made of or used with), ordered from the more general to the most specific. Even the first hint should already point in the right direction.'} Each hint is a single emoji, no repeats.
 Also give "accept": all acceptable answers in lowercase — the word, close synonyms and plural, in English AND in Russian.
 Reply JSON {"word": string, "accept": [string], "hints": [string]}.`,
             { type: 'OBJECT', properties: { word: { type: 'STRING' }, accept: { type: 'ARRAY', items: { type: 'STRING' } }, hints: { type: 'ARRAY', items: { type: 'STRING' } } }, required: ['word', 'accept', 'hints'] });
@@ -996,7 +1013,7 @@ Reply JSON {"word": string, "accept": [string], "hints": [string]}.`,
         }
         if (game.round !== r) return;
         const seen = new Set();
-        r.hints = (res.hints || []).map(h => byChar.get(norm(String(h))))
+        r.hints = (res.hints || []).map(h => ensureRec(String(h)))
           .filter(x => x && !seen.has(x) && seen.add(x)).map(x => x.c);
         if (r.hints.length < 3) throw new Error('не вышло подобрать подсказки, попробуй ещё');
         r.word = String(res.word || '');
@@ -1055,6 +1072,25 @@ Reply JSON {"word": string, "accept": [string], "hints": [string]}.`,
     },
   };
 
+
+  // ---------- difficulty toggle: obvious (default) / creative ----------
+  const diffBtn = document.getElementById('diffBtn');
+  function paintDiff() {
+    diffBtn.textContent = creative ? '✨ Креативные' : '😀 Очевидные';
+    diffBtn.classList.toggle('on', creative);
+    diffBtn.title = creative ? 'Креативные: добавляет неочевидные остроумные связи' : 'Очевидные: только понятные смайлики';
+  }
+  paintDiff();
+  diffBtn.addEventListener('click', () => {
+    creative = !creative;
+    try { localStorage.setItem('opt_creative', creative ? '1' : '0'); } catch (e) {}
+    paintDiff(); fx.tap();
+    toast(creative ? '✨ Креативные: добавлены неочевидные связи' : '😀 Очевидные: только понятные смайлики');
+    if (mode === 'defend') game.newDefend();
+    else if (mode === 'guess') game.newGuess();
+    else if (field.value.trim()) { forced.clear(); banned.clear(); lastText = ''; run(field.value); }
+  });
+
   // ---------- modes ----------
   const PLACEHOLDER = { magnet: 'Что хочешь найти?', story: 'Расскажи историю: мой понедельник…', defend: '', guess: 'Твой ответ… (Enter)' };
   const HINT = {
@@ -1091,8 +1127,12 @@ Reply JSON {"word": string, "accept": [string], "hints": [string]}.`,
     let rec = byChar.get(norm(ch));
     if (rec) return rec;
     const e = allEntries.get(norm(ch));
-    if (!e || extraUsed >= EXTRA_SLOTS || !atlasCtx) return null;
-    const i = listLen + extraUsed++;
+    if (!e || !atlasCtx) return null;
+    let i;
+    if (freeAtlasSlots.length) i = freeAtlasSlots.pop();
+    else if (extraUsed < EXTRA_SLOTS) i = listLen + extraUsed++;
+    else return null;
+    atlasCtx.clearRect((i % ATLAS_COLS) * ATLAS_CELL, Math.floor(i / ATLAS_COLS) * ATLAS_CELL, ATLAS_CELL, ATLAS_CELL);
     atlasCtx.font = `46px ${atlasFamily}`; atlasCtx.textAlign = 'center'; atlasCtx.textBaseline = 'middle';
     atlasCtx.fillText(e[0], (i % ATLAS_COLS) * ATLAS_CELL + ATLAS_CELL / 2, Math.floor(i / ATLAS_COLS) * ATLAS_CELL + ATLAS_CELL / 2 + 2);
     rec = { i, c: e[0], name: e[1], group: e[2], body: null, cur: r0, target: r0, state: 'pile', slot: -1, at: 0 };
@@ -1100,13 +1140,31 @@ Reply JSON {"word": string, "accept": [string], "hints": [string]}.`,
     rec.body.rec = rec;
     rec.body.collisionFilter.category = CAT_MAG; rec.body.collisionFilter.mask = CAT_MAG | CAT_MOUSE; // appears inside the heap without a shove
     Composite.add(world, rec.body);
+    rec.extra = true; rec.lastUsed = performance.now();
     recs.push(rec); byChar.set(norm(e[0]), rec);
     return rec;
   }
 
+  // keep the heap small on phones: drop summoned emojis nobody is using any more
+  const EXTRA_KEEP = 40;
+  function evictIdleExtras(incoming) {
+    const now = performance.now();
+    const extras = recs.filter(r => r.extra);
+    const over = extras.length + incoming - EXTRA_KEEP;
+    if (over <= 0) return;
+    const idle = extras.filter(r => r.state === 'pile' && !active.has(r) && !forced.has(r) && !probe.has(r) && !r.tossing && !(r.glowUntil > now) && now - r.lastUsed > 3000)
+      .sort((a, b) => a.lastUsed - b.lastUsed).slice(0, over);
+    for (const r of idle) {
+      Composite.remove(world, r.body);
+      recs.splice(recs.indexOf(r), 1);
+      byChar.delete(norm(r.c));
+      freeAtlasSlots.push(r.i);
+    }
+  }
+
   function toss(rec, delay) {
     const now = performance.now() + delay;
-    rec.glowUntil = now + 3200; rec.target = r0 * 1.6;
+    rec.glowUntil = now + 3200; rec.target = r0 * 1.6; rec.lastUsed = now;
     if (active.has(rec) || probe.has(rec)) return; // already on the bar: the glow is enough
     setTimeout(() => {
       const b = rec.body;
@@ -1390,9 +1448,11 @@ Reply JSON {"ok": boolean, "corrected": string, "note": string}.`,
   // ---------- welcome / how-to (shown once after the first successful setup) ----------
   const welcome = document.getElementById('welcome');
   const setupHint = document.getElementById('setupHint');
-  document.getElementById('wDevice').textContent = MOBILE
-    ? 'На телефоне нейросеть подбирает только такие креативные смайлики. Очевидные ты добираешь сам: найди нужный в куче внизу и подтащи к строке (или найди через 🔍).'
-    : 'Сначала идут очевидные смайлики, дальше креативные. Любой другой можно добрать самому из кучи внизу.';
+  document.getElementById('wDevice').innerHTML =
+    '<b>Два режима</b> (переключатель справа над строкой):<br>' +
+    '😀 <b>Очевидные</b> (по умолчанию): всё просто, только понятные смайлики. Так легче, и именно так лучше играть.<br>' +
+    '✨ <b>Креативные</b>: к очевидным добавляются неочевидные, остроумные связи. Интереснее, но в играх сложнее.<br>' +
+    '<span style="color:var(--muted)">Любой другой смайлик можно добрать самому: найди его в куче (или через 🔍) и подтащи к строке.</span>';
   function showWelcome() { welcome.classList.add('open'); welcome.scrollTop = 0; }
   function hideWelcome() { welcome.classList.remove('open'); store.set('seen_intro', '1'); field.focus(); }
   function maybeIntro() {
