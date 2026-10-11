@@ -174,6 +174,7 @@
     border: 1px solid var(--glass-b); background: transparent; color: var(--text);
   }
   #card button.primary { background: var(--accent); border-color: var(--accent); color: #0b0d24; }
+  #card .linkbtn { border: none !important; background: none !important; color: var(--muted) !important; font-size: 12px !important; text-align: left; padding: 0 !important; text-decoration: underline; }
   #card small { color: var(--muted); font-size: 12px; line-height: 1.4; }
   #card .opt { display: flex; align-items: center; gap: 10px; font-size: 14px; color: var(--text); cursor: pointer; }
   #card .opt input { width: 18px; height: 18px; padding: 0; accent-color: var(--accent); }
@@ -198,7 +199,7 @@
 <canvas id="world"></canvas>
 
 <div id="bar">
-  <div id="hint"><span id="status">Напиши что-нибудь, например: что надеть зимой</span><span><span id="count"></span><span id="ver">v11</span></span></div>
+  <div id="hint"><span id="status">Напиши что-нибудь, например: что надеть зимой</span><span><span id="count"></span><span id="ver">v13</span></span></div>
   <input id="field" type="text" autocomplete="off" spellcheck="false" placeholder="Что хочешь найти?" autofocus>
 </div>
 
@@ -232,13 +233,21 @@
 <div id="modal">
   <div id="card">
     <h2>Gemini API</h2>
-    <label>API-ключ
+    <label>Код доступа
+      <input id="accessInput" type="password" placeholder="Код от владельца приложения" autocomplete="off">
+    </label>
+    <small>Код выдал владелец приложения: с ним Gemini работает через его сервер, без твоего ключа.</small>
+    <label>Или свой API-ключ Gemini
       <input id="keyInput" type="password" placeholder="AIza…" autocomplete="off">
     </label>
     <label>Модель
       <input id="modelInput" type="text" placeholder="gemini-2.5-flash">
     </label>
-    <small>Ключ хранится только в этом браузере (localStorage) и уходит напрямую в Google.</small>
+    <small>Свой ключ хранится только в этом браузере и уходит напрямую в Google. Посмотреть или скопировать его после сохранения нельзя.</small>
+    <label>Адрес сервера (обычно не нужно трогать)
+      <input id="proxyInput" type="text" placeholder="https://….workers.dev" autocomplete="off">
+    </label>
+    <button id="forgetBtn" class="linkbtn" type="button">Забыть ключ и код на этом устройстве</button>
     <label>Модель озвучки (необязательно)
       <input id="ttsModelInput" type="text" placeholder="gemini-2.5-flash-preview-tts">
     </label>
@@ -255,7 +264,7 @@
 </div>
 
 <script src="matter.min.js"></script>
-<script src="emoji-data.js?v=11"></script>
-<script src="app.js?v=11"></script>
+<script src="emoji-data.js?v=13"></script>
+<script src="app.js?v=13"></script>
 </body>
 </html>

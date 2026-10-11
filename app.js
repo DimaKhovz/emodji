@@ -12,9 +12,13 @@
   const loading = document.getElementById('loading');
   const modal = document.getElementById('modal');
   const keyInput = document.getElementById('keyInput');
+  const accessInput = document.getElementById('accessInput');
+  const proxyInput = document.getElementById('proxyInput');
   const modelInput = document.getElementById('modelInput');
 
   const DEFAULT_MODEL = 'gemini-2.5-flash';
+  // Address of your Cloudflare Worker (see ПОДКЛЮЧИТЬ-СЕРВЕР.md). Friends then only need the access code.
+  const DEFAULT_PROXY = 'https://emodji-proxy.dkhovz.workers.dev';
   const store = {
     get(k) { try { return localStorage.getItem(k) || ''; } catch { return ''; } },
     set(k, v) { try { localStorage.setItem(k, v); } catch {} },
@@ -595,11 +599,20 @@ Reply as JSON {"fits": boolean, "reason": string}. The reason is in English, ONE
   let lastText = '';
   const cache = new Map();
 
+  // Own key: straight to Google. Otherwise: through the proxy with the access code (the real key never reaches the browser).
+  const proxyUrl = () => (store.get('proxy_url') || DEFAULT_PROXY).replace(/\/+$/, '');
+  const hasAccess = () => !!(store.get('gemini_key') || (proxyUrl() && store.get('access_code')));
+  function gemRequest(model) {
+    const m = encodeURIComponent(model), key = store.get('gemini_key');
+    if (key) return { url: `https://generativelanguage.googleapis.com/v1beta/models/${m}:generateContent`, headers: { 'Content-Type': 'application/json', 'x-goog-api-key': key } };
+    const code = store.get('access_code');
+    if (proxyUrl() && code) return { url: `${proxyUrl()}/v1beta/models/${m}:generateContent`, headers: { 'Content-Type': 'application/json', 'x-access-code': code } };
+    throw new Error('Нужен код доступа или API-ключ — нажми ⚙');
+  }
+
   async function geminiJSON(prompt, schema, signal) {
-    const key = store.get('gemini_key');
-    if (!key) throw new Error('Нужен API-ключ — нажми ⚙');
     const model = store.get('gemini_model') || DEFAULT_MODEL;
-    const url = `https://generativelanguage.googleapis.com/v1beta/models/${encodeURIComponent(model)}:generateContent`;
+    const { url, headers } = gemRequest(model);
     const mk = (withThinking) => ({
       contents: [{ parts: [{ text: prompt }] }],
       generationConfig: {
@@ -611,7 +624,7 @@ Reply as JSON {"fits": boolean, "reason": string}. The reason is in English, ONE
     });
     const post = (body) => fetch(url, {
       method: 'POST', signal,
-      headers: { 'Content-Type': 'application/json', 'x-goog-api-key': key },
+      headers,
       body: JSON.stringify(body),
     });
     let res = await post(mk(true));
@@ -1126,7 +1139,7 @@ Reply JSON {"word": string, "accept": [string], "hints": [string]}.`,
     if (!q) return;
     const seq = ++searchSeq;
     let chars = [];
-    if (!DEMO && store.get('gemini_key')) {
+    if (!DEMO && hasAccess()) {
       try {
         const arr = await geminiJSON(`The user looks for ONE specific emoji in a big pile and describes it with a word or short phrase (any language): "${q}".
 Return up to 4 real Unicode emojis that best match what they mean, the most exact match first. Single emoji characters only.`,
@@ -1186,12 +1199,11 @@ Return up to 4 real Unicode emojis that best match what they mean, the most exac
 
     async function geminiBuffer(text) {
       if (cache.has(text)) return cache.get(text);
-      const key = store.get('gemini_key');
-      if (!key) throw new Error('no key');
       const model = store.get('gemini_tts_model') || TTS_MODEL;
-      const res = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/${encodeURIComponent(model)}:generateContent`, {
+      const req = gemRequest(model);
+      const res = await fetch(req.url, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json', 'x-goog-api-key': key },
+        headers: req.headers,
         body: JSON.stringify({
           contents: [{ parts: [{ text: 'Say clearly, in a warm friendly American voice, a little slowly: ' + text }] }],
           generationConfig: {
@@ -1382,7 +1394,13 @@ Reply JSON {"ok": boolean, "corrected": string, "note": string}.`,
   const ttsModelInput = document.getElementById('ttsModelInput');
   const vibeNote = document.getElementById('vibeNote');
   const openModal = () => {
-    keyInput.value = store.get('gemini_key');
+    const savedKey = store.get('gemini_key');
+    keyInput.value = ''; // never put the saved key back into the field
+    keyInput.placeholder = savedKey ? `Сохранён (…${savedKey.slice(-4)}). Введи новый, чтобы заменить` : 'AIza…';
+    accessInput.value = '';
+    accessInput.placeholder = store.get('access_code') ? 'Сохранён. Введи новый, чтобы заменить' : 'Код от владельца приложения';
+    proxyInput.value = store.get('proxy_url');
+    proxyInput.placeholder = DEFAULT_PROXY || 'https://….workers.dev';
     modelInput.value = store.get('gemini_model');
     optSound.checked = prefs.sound; optVibe.checked = prefs.vibe; optTilt.checked = prefs.tilt; optShake.checked = prefs.shake;
     ttsModelInput.value = store.get('gemini_tts_model');
@@ -1392,8 +1410,14 @@ Reply JSON {"ok": boolean, "corrected": string, "note": string}.`,
   const closeModal = () => { modal.classList.remove('open'); field.focus(); };
   document.getElementById('gear').addEventListener('click', openModal);
   document.getElementById('cancelBtn').addEventListener('click', closeModal);
+  document.getElementById('forgetBtn').addEventListener('click', () => {
+    store.set('gemini_key', ''); store.set('access_code', '');
+    toast('Ключ и код удалены из этого браузера'); closeModal(); openModal();
+  });
   document.getElementById('saveBtn').addEventListener('click', () => {
-    store.set('gemini_key', keyInput.value.trim());
+    if (keyInput.value.trim()) store.set('gemini_key', keyInput.value.trim());
+    if (accessInput.value.trim()) store.set('access_code', accessInput.value.trim());
+    store.set('proxy_url', proxyInput.value.trim());
     store.set('gemini_model', modelInput.value.trim());
     prefs.sound = optSound.checked; prefs.vibe = optVibe.checked;
     store.set('opt_sound', prefs.sound ? '1' : '0'); store.set('opt_vibe', prefs.vibe ? '1' : '0');
@@ -1450,7 +1474,7 @@ Reply JSON {"ok": boolean, "corrected": string, "note": string}.`,
     initRecords(list);
     setupMouse();
     loading.classList.add('hide');
-    if (!store.get('gemini_key') && !DEMO) openModal();
+    if (!hasAccess() && !DEMO) openModal();
     window.__emodji = { recs, active, setResults, engine, tilt, runSearch, shake };
     requestAnimationFrame(frame);
   })();
