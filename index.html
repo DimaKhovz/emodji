@@ -140,6 +140,26 @@
   #diffBtn { font: 600 12px Inter, sans-serif; padding: 4px 10px; border-radius: 99px; cursor: pointer; color: var(--text);
     border: 1px solid var(--glass-b); background: var(--glass); }
   #diffBtn.on { background: rgba(255,214,120,.18); border-color: rgba(255,214,120,.6); color: #ffd479; }
+  /* rocker switch for the fire: calm when idle, springy click when pressed */
+  #fireBtn {
+    position: fixed; z-index: 6; width: 58px; height: 32px; padding: 0; border-radius: 16px; cursor: pointer;
+    border: 1px solid rgba(255,255,255,.1);
+    background: linear-gradient(180deg, #0b0d20, #171a38);
+    box-shadow: inset 0 2px 4px rgba(0,0,0,.75), inset 0 -1px 0 rgba(255,255,255,.05), 0 1px 0 rgba(255,255,255,.06);
+    -webkit-tap-highlight-color: transparent; outline: none;
+  }
+  #fireBtn .cap {
+    position: absolute; top: 3px; left: 3px; width: 34px; height: 24px; border-radius: 12px;
+    background: linear-gradient(145deg, #5a6096, #353a72 62%, #2a2e60);
+    box-shadow: 0 2px 4px rgba(0,0,0,.55), inset 0 1px 0 rgba(255,255,255,.3), inset 0 -2px 3px rgba(0,0,0,.3);
+    transition: left .24s cubic-bezier(.3,1.7,.5,1), transform .12s ease-out;
+    display: grid; place-items: center;
+  }
+  #fireBtn.on .cap { left: 19px; }
+  #fireBtn:active .cap { transform: scaleX(1.1) scaleY(.92); }
+  #fireBtn .dot { width: 4px; height: 4px; border-radius: 50%; background: #4a4f86; box-shadow: inset 0 1px 1px rgba(0,0,0,.5); transition: background .2s, box-shadow .2s; }
+  #fireBtn.on .dot { background: #ffb457; box-shadow: 0 0 5px rgba(255,160,60,.8); }
+  #fireBtn:focus-visible { box-shadow: inset 0 2px 4px rgba(0,0,0,.75), 0 0 0 2px var(--accent); }
   #toast {
     position: fixed; left: 50%; bottom: 24px; z-index: 40; transform: translate(-50%, 20px); opacity: 0;
     padding: 10px 16px; border-radius: 12px; background: rgba(18,20,48,.95); border: 1px solid var(--glass-b);
@@ -260,6 +280,7 @@
   </div>
 </div>
 <div id="searchBar"><input id="searchInput" type="search" autocomplete="off" spellcheck="false" placeholder="Найти смайлик: мото, cat, пицца…"><button class="tbtn" id="searchClose" title="Закрыть">✕</button></div>
+<button id="fireBtn" type="button" role="switch" aria-checked="true" title="Огонь"><span class="cap"><i class="dot"></i></span></button>
 <div id="histPanel"></div>
 <div id="toast"></div>
 <div id="coach"><div class="ch"><span id="coachTitle"></span><button id="coachClose" title="Закрыть">×</button></div><div id="coachBody"></div><div id="coachActions"></div></div>
@@ -289,7 +310,7 @@
       <li><b>Тащи пальцем:</b> смайлик из кучи к строке, и нейросеть решит, подходит ли он. Если нет, объяснит почему, и с ней можно <b>поспорить</b>: логичный довод её переубедит.</li>
       <li><b>Нажми на смайлик</b>, чтобы узнать, почему он тут.</li>
       <li><b>Переставляй</b> прилипшие смайлики куда угодно под строкой.</li>
-      <li><b>🔥 Огонь справа:</b> брось в него смайлик, и он сгорит. Так убираешь лишнее (основные смайлики из кучи сами вернутся через минуту).</li>
+      <li><b>🔥 Огонь справа:</b> брось в него смайлик, и он сгорит. Так убираешь лишнее (основные смайлики из кучи сами вернутся через минуту). Тумблер под огнём включает и гасит его.</li>
       <li>🔍 найти смайлик в куче (он подлетит и подсветится), 📋 скопировать ряд в мессенджер, 🕘 история запросов.</li>
       <li>Режимы сверху: 🧲 магнит, 📖 история из смайликов, 🛡️ «защити смайлик», ❓ «угадай слово».</li>
       <li>Объяснения на <b>английском</b>: нейросеть поправит твой английский, а кнопка 🔊 произнесёт фразу.</li>
@@ -301,7 +322,7 @@
 
 <div id="modal">
   <div id="card">
-    <h2>Настройки <small id="verNote" style="font-weight:400;color:var(--muted)">v18</small></h2>
+    <h2>Настройки <small id="verNote" style="font-weight:400;color:var(--muted)">v19</small></h2>
     <div id="setupHint">
       <b>👋 Первый запуск. Всего два шага:</b>
       <ol>
@@ -342,7 +363,7 @@
 </div>
 
 <script src="matter.min.js"></script>
-<script src="emoji-data.js?v=18"></script>
-<script src="app.js?v=18"></script>
+<script src="emoji-data.js?v=19"></script>
+<script src="app.js?v=19"></script>
 </body>
 </html>

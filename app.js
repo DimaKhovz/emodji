@@ -242,7 +242,7 @@
 
   function applyForces(now) {
     const g = G();
-    if (flung.size) { // the fire: only emojis being dragged or thrown can burn
+    if (flung.size && fireOn && fireLevel > 0.3) { // the fire: only emojis being dragged or thrown can burn
       const fz = fireGeom();
       for (const rec of Array.from(flung)) {
         if (!rec.body || now > rec.flingUntil) { flung.delete(rec); continue; }
@@ -400,6 +400,8 @@
 
   // ---------- the fire on the right edge: throw an emoji in and it burns ----------
   const flames = [], sparks = [], burning = [];
+  let fireOn = store.get('opt_fire') !== '0';
+  let fireLevel = fireOn ? 1 : 0; // eases between 0 and 1 so the flames swell / die down smoothly
   const FLAME_MAX = MOBILE ? 130 : 220;
   const flameSprites = [['255,250,220', '255,200,80'], ['255,170,50', '255,90,10'], ['230,70,20', '120,20,5']].map(([c0, c1]) => {
     const c = document.createElement('canvas'); c.width = c.height = 64;
@@ -414,24 +416,49 @@
     const rows = MOBILE ? 2 : 3;
     const clusterBottom = lineY + 10 + spacing * 0.94 * rows + spacing * 0.6;
     const pileTop = H - Math.max(130, H * 0.34);
-    let mid = (clusterBottom + pileTop) / 2, hgt = clamp((pileTop - clusterBottom) * 0.92, 90, 280);
-    if (pileTop - clusterBottom < 90) { mid = (clusterBottom + pileTop) / 2; hgt = 90; }
-    return { x0: W - clamp(W * 0.05, 56, 90), top: mid - hgt / 2, bottom: mid + hgt / 2, mid, hgt };
+    let mid = (clusterBottom + pileTop) / 2, hgt = clamp((pileTop - clusterBottom) * 0.92, 130, 290);
+    const slotTop = mid - hgt / 2, slotBottom = mid + hgt / 2;
+    const fireBottom = slotBottom - 44; // the last 44px under the flames belong to the switch
+    return { x0: W - clamp(W * 0.05, 56, 90), top: slotTop, bottom: fireBottom, mid: (slotTop + fireBottom) / 2, hgt: fireBottom - slotTop, btnTop: slotBottom - 34 };
   }
+
+  const fireBtn = document.getElementById('fireBtn');
+  let fireBtnPos = '';
+  function placeFireBtn(fz) {
+    const l = Math.round(offX + W - 66), t = Math.round(offY + fz.btnTop), key = l + ',' + t;
+    if (key !== fireBtnPos) { fireBtnPos = key; fireBtn.style.left = l + 'px'; fireBtn.style.top = t + 'px'; }
+  }
+  function paintFireBtn() {
+    fireBtn.classList.toggle('on', fireOn);
+    fireBtn.setAttribute('aria-checked', fireOn ? 'true' : 'false');
+    fireBtn.title = fireOn ? 'Огонь включён (нажми, чтобы погасить)' : 'Огонь выключен (нажми, чтобы зажечь)';
+  }
+  paintFireBtn();
+  fireBtn.addEventListener('click', () => {
+    fx.unlock(); fireOn = !fireOn; store.set('opt_fire', fireOn ? '1' : '0');
+    paintFireBtn(); fx.click(fireOn);
+    if (fireOn) { // the flames flare up for a moment
+      const fz = fireGeom();
+      for (let n = 0; n < 60; n++) flames.push({ x: W - rand(0, 24), y: rand(fz.top, fz.bottom), vx: -rand(0.8, 3.2), vy: -rand(0.6, 2.4), t: 0, max: rand(30, 60), s: rand(26, 54), ph: rand(0, 6.28) });
+    }
+  });
 
   function drawFireBack(k) {
     const fz = fireGeom(), now = performance.now();
+    placeFireBtn(fz);
+    fireLevel += ((fireOn ? 1 : 0) - fireLevel) * Math.min(1, 0.07 * k);
+    if (!fireOn && fireLevel < 0.01) fireLevel = 0;
     // soft orange glow on the edge
     const pulse = 0.85 + 0.15 * Math.sin(now / 160) + 0.05 * Math.sin(now / 53);
     ctx.save();
     ctx.globalCompositeOperation = 'lighter';
     const R = fz.hgt * 0.75;
     const glow = ctx.createRadialGradient(W, fz.mid, 0, W, fz.mid, R);
-    glow.addColorStop(0, `rgba(255,120,30,${0.42 * pulse})`); glow.addColorStop(1, 'rgba(255,60,0,0)');
-    ctx.fillStyle = glow; ctx.fillRect(W - R, fz.mid - R, R, R * 2);
+    glow.addColorStop(0, `rgba(255,120,30,${0.42 * pulse * fireLevel})`); glow.addColorStop(1, 'rgba(255,60,0,0)');
+    if (fireLevel > 0.01) { ctx.fillStyle = glow; ctx.fillRect(W - R, fz.mid - R, R, R * 2); }
 
     // emit + move + draw the flames
-    const want = Math.min(FLAME_MAX - flames.length, Math.ceil(fz.hgt / 11 * k));
+    const want = Math.min(FLAME_MAX - flames.length, Math.round(fz.hgt / 11 * k * fireLevel));
     for (let n = 0; n < want; n++) {
       flames.push({ x: W - rand(0, 18), y: rand(fz.top, fz.bottom), vx: -rand(0.3, 2.1), vy: -rand(0.5, 1.9), t: 0, max: rand(28, 58), s: rand(22, 46), ph: rand(0, 6.28) });
     }
@@ -901,6 +928,11 @@ Reply as JSON {"fits": boolean, "reason": string}. The reason is in English, ONE
       tap() { if (ok('vt', 120)) buzz(18); },
       attach() { if (ok('a', 45)) { tone(1500, 900, 0.05, 'triangle', 0.07); } if (ok('va', 110)) buzz(28); },
       drop() { if (ok('d', 60)) tone(420, 130, 0.16, 'sine', 0.08); if (ok('vd', 150)) buzz(16); },
+      click(on) { // tactile switch: two short ticks, a bit higher when switching on
+        tone(on ? 2300 : 1700, on ? 1500 : 1000, 0.025, 'square', 0.035);
+        tone(on ? 1300 : 900, 700, 0.04, 'triangle', 0.05, 0.035);
+        buzz(on ? [8, 22, 14] : [12]);
+      },
       burn() {
         if (prefs.sound && audio && audio.state === 'running') {
           const t = audio.currentTime, len = Math.floor(audio.sampleRate * 0.45);
@@ -1713,7 +1745,7 @@ Reply JSON {"ok": boolean, "corrected": string, "note": string}.`,
     setupMouse();
     loading.classList.add('hide');
     if (!hasAccess() && !DEMO) openModal(); else maybeIntro();
-    window.__emodji = { recs, active, setResults, engine, tilt, runSearch, shake, burn, fireGeom, flung };
+    window.__emodji = { recs, active, setResults, engine, tilt, runSearch, shake, burn, fireGeom, flung, fireState: () => ({ fireOn, fireLevel, flames: flames.length }) };
     requestAnimationFrame(frame);
   })();
 })();
