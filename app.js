@@ -71,6 +71,8 @@
   const forced = new Set();    // won the argument: stay magnetised for this query
   const banned = new Set();    // lost the argument: stay out for this query
   let currentChars = [];
+  const flung = new Set();    // emojis the user is dragging / has just thrown (only these can burn)
+  let dragState = null;       // the pointer drag in progress
   let spawnQueue = [];
   let atlas, atlasCtx, atlasFamily, ATLAS_CELL = 64, ATLAS_COLS = 40;
   const EXTRA_SLOTS = 80; // emojis summoned by search that were not in the heap
@@ -240,6 +242,17 @@
 
   function applyForces(now) {
     const g = G();
+    if (flung.size) { // the fire: only emojis being dragged or thrown can burn
+      const fz = fireGeom();
+      for (const rec of Array.from(flung)) {
+        if (!rec.body || now > rec.flingUntil) { flung.delete(rec); continue; }
+        const b = rec.body;
+        if (b.position.x > fz.x0 && b.position.y > fz.top && b.position.y < fz.bottom) {
+          if ((mode === 'defend' || mode === 'guess') && (active.has(rec) || probe.has(rec))) continue; // never burn a game's emoji
+          flung.delete(rec); burn(rec);
+        }
+      }
+    }
     const gx = engine.gravity.x * engine.gravity.scale; // phone tilt: only the heap feels it
     for (const rec of active) {
       const b = rec.body;
@@ -315,9 +328,10 @@
   Matter.Events.on(engine, 'beforeUpdate', () => applyForces(performance.now()));
 
   // ---------- render ----------
-  function draw() {
+  function draw(dtScale) {
     ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
     ctx.clearRect(0, 0, W, H);
+    drawFireBack(dtScale || 1);
 
     const act = [];
     for (const rec of recs) {
@@ -344,6 +358,7 @@
     ctx.restore();
 
     act.sort((a, b) => (active.has(a) || probe.has(a) ? 1 : 0) - (active.has(b) || probe.has(b) ? 1 : 0));
+    drawBurning(dtScale || 1);
     for (const rec of act) {
       drawSprite(rec, 1);
       const left = rec.glowUntil - performance.now();
@@ -377,10 +392,141 @@
     let steps = 0;
     while (acc >= 1000 / 60 && steps < 3) { Engine.update(engine, 1000 / 60); acc -= 1000 / 60; steps++; }
     if (steps === 3) acc = 0;
-    draw();
+    draw(dt / 16.667);
     requestAnimationFrame(frame);
   }
 
+
+
+  // ---------- the fire on the right edge: throw an emoji in and it burns ----------
+  const flames = [], sparks = [], burning = [];
+  const FLAME_MAX = MOBILE ? 130 : 220;
+  const flameSprites = [['255,250,220', '255,200,80'], ['255,170,50', '255,90,10'], ['230,70,20', '120,20,5']].map(([c0, c1]) => {
+    const c = document.createElement('canvas'); c.width = c.height = 64;
+    const g = c.getContext('2d'), gr = g.createRadialGradient(32, 32, 0, 32, 32, 32);
+    gr.addColorStop(0, `rgba(${c0},1)`); gr.addColorStop(0.35, `rgba(${c1},0.75)`); gr.addColorStop(1, `rgba(${c1},0)`);
+    g.fillStyle = gr; g.fillRect(0, 0, 64, 64);
+    return c;
+  });
+
+  // a free spot on the right edge, between the magnet rows and the heap
+  function fireGeom() {
+    const rows = MOBILE ? 2 : 3;
+    const clusterBottom = lineY + 10 + spacing * 0.94 * rows + spacing * 0.6;
+    const pileTop = H - Math.max(130, H * 0.34);
+    let mid = (clusterBottom + pileTop) / 2, hgt = clamp((pileTop - clusterBottom) * 0.92, 90, 280);
+    if (pileTop - clusterBottom < 90) { mid = (clusterBottom + pileTop) / 2; hgt = 90; }
+    return { x0: W - clamp(W * 0.05, 56, 90), top: mid - hgt / 2, bottom: mid + hgt / 2, mid, hgt };
+  }
+
+  function drawFireBack(k) {
+    const fz = fireGeom(), now = performance.now();
+    // soft orange glow on the edge
+    const pulse = 0.85 + 0.15 * Math.sin(now / 160) + 0.05 * Math.sin(now / 53);
+    ctx.save();
+    ctx.globalCompositeOperation = 'lighter';
+    const R = fz.hgt * 0.75;
+    const glow = ctx.createRadialGradient(W, fz.mid, 0, W, fz.mid, R);
+    glow.addColorStop(0, `rgba(255,120,30,${0.42 * pulse})`); glow.addColorStop(1, 'rgba(255,60,0,0)');
+    ctx.fillStyle = glow; ctx.fillRect(W - R, fz.mid - R, R, R * 2);
+
+    // emit + move + draw the flames
+    const want = Math.min(FLAME_MAX - flames.length, Math.ceil(fz.hgt / 11 * k));
+    for (let n = 0; n < want; n++) {
+      flames.push({ x: W - rand(0, 18), y: rand(fz.top, fz.bottom), vx: -rand(0.3, 2.1), vy: -rand(0.5, 1.9), t: 0, max: rand(28, 58), s: rand(22, 46), ph: rand(0, 6.28) });
+    }
+    for (let i = flames.length - 1; i >= 0; i--) {
+      const f = flames[i];
+      f.t += k;
+      if (f.t >= f.max) { flames.splice(i, 1); continue; }
+      f.x += (f.vx + Math.sin(f.t * 0.3 + f.ph) * 0.35) * k; f.y += f.vy * k; f.vx *= 0.995;
+      const u = f.t / f.max, sp = flameSprites[u < 0.22 ? 0 : u < 0.6 ? 1 : 2], size = f.s * (1 - u * 0.55);
+      ctx.globalAlpha = Math.min(1, (1 - u) * 1.15) * 0.85;
+      ctx.drawImage(sp, f.x - size / 2, f.y - size / 2, size, size);
+    }
+    ctx.restore();
+  }
+
+  function addSparks(x, y, n) {
+    for (let i = 0; i < n; i++) {
+      const a = rand(0, 6.283), v = rand(1.2, 5.5);
+      sparks.push({ x, y, vx: Math.cos(a) * v - 1, vy: Math.sin(a) * v - 1.5, t: 0, max: rand(24, 50), s: rand(1.6, 3.8) });
+    }
+  }
+
+  function drawBurning(k) {
+    ctx.save();
+    // the emoji itself: shrinks, spins, darkens and fades
+    for (let i = burning.length - 1; i >= 0; i--) {
+      const b = burning[i];
+      b.t += k;
+      const u = b.t / 34;
+      if (u >= 1) { burning.splice(i, 1); continue; }
+      b.x += b.vx * k; b.y += b.vy * k; b.vy -= 0.02 * k; b.a += 0.12 * k;
+      const d = b.r * 2 * 1.32 * (1 - u * 0.75), sx = (b.i % ATLAS_COLS) * ATLAS_CELL, sy = Math.floor(b.i / ATLAS_COLS) * ATLAS_CELL;
+      const c = Math.cos(b.a), s2 = Math.sin(b.a);
+      ctx.setTransform(c * dpr, s2 * dpr, -s2 * dpr, c * dpr, b.x * dpr, b.y * dpr);
+      ctx.globalAlpha = 1 - u * u;
+      try { ctx.filter = `brightness(${(1 - 0.75 * u).toFixed(2)}) sepia(${u.toFixed(2)})`; } catch (e) {}
+      ctx.drawImage(atlas, sx, sy, ATLAS_CELL, ATLAS_CELL, -d / 2, -d / 2, d, d);
+      ctx.filter = 'none';
+    }
+    // sparks
+    ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+    ctx.globalCompositeOperation = 'lighter';
+    for (let i = sparks.length - 1; i >= 0; i--) {
+      const p = sparks[i];
+      p.t += k;
+      if (p.t >= p.max) { sparks.splice(i, 1); continue; }
+      p.x += p.vx * k; p.y += p.vy * k; p.vy += 0.1 * k; p.vx *= 0.985;
+      const u = p.t / p.max;
+      ctx.globalAlpha = 1 - u;
+      ctx.fillStyle = u < 0.35 ? '#fff3b0' : u < 0.7 ? '#ff9b2e' : '#ff4a12';
+      ctx.beginPath(); ctx.arc(p.x, p.y, p.s * (1 - u * 0.5), 0, 6.283); ctx.fill();
+    }
+    ctx.restore();
+    ctx.globalAlpha = 1;
+  }
+
+  function cancelDragFor(rec) {
+    if (dragState && dragState.rec === rec) {
+      Composite.remove(world, dragState.con);
+      dragState = null;
+    }
+  }
+
+  function revive(rec, summon) { // a burnt emoji comes back (summoned by a query, or falling from the top later)
+    if (rec.body) return;
+    rec.cur = r0; rec.target = r0; rec.slot = -1; rec.moved = false; rec.state = 'pile';
+    rec.glowUntil = 0; rec.tossing = false; rec.released = true; rec.flingUntil = 0;
+    rec.body = makeBody(rand(r0 * 2, W - r0 * 2), summon ? H - r0 - rand(0, 20) : -r0 * 2, r0);
+    rec.body.rec = rec;
+    if (summon) { rec.body.collisionFilter.category = CAT_MAG; rec.body.collisionFilter.mask = CAT_MAG | CAT_MOUSE; }
+    Composite.add(world, rec.body);
+  }
+
+  function burn(rec) {
+    const b = rec.body;
+    if (!b) return;
+    const x = b.position.x, y = b.position.y, wasShown = active.has(rec), wasProbe = probe.has(rec);
+    cancelDragFor(rec);
+    burning.push({ i: rec.i, x, y, vx: -rand(0.2, 0.9), vy: -rand(0.4, 1.2), t: 0, a: b.angle, r: rec.cur });
+    addSparks(x, y, 38);
+    fx.burn();
+    if (wasShown || wasProbe) { // gone from the selection until the text changes
+      forced.delete(rec); banned.add(rec); probe.delete(rec);
+      if (wasShown) setResults(currentChars);
+    }
+    Composite.remove(world, b);
+    rec.body = null; rec.state = 'gone'; flung.delete(rec);
+    if (rec.extra) { // summoned ones disappear for good (a query can summon them again)
+      recs.splice(recs.indexOf(rec), 1);
+      byChar.delete(norm(rec.c));
+      freeAtlasSlots.push(rec.i);
+    } else {
+      setTimeout(() => { if (rec.state === 'gone') revive(rec, false); }, 45000); // the heap refills itself
+    }
+  }
 
   // ---------- picking an emoji: Gemini explains / judges ----------
   const bubble = document.getElementById('bubble');
@@ -528,7 +674,6 @@
   }
 
   function setupMouse() {
-    let drag = null;
     canvas.addEventListener('pointerdown', (e) => {
       fx.unlock();
       if (e.button !== undefined && e.button > 0) return;
@@ -546,20 +691,22 @@
       });
       con.angleB = b.angle;
       Composite.add(world, con);
-      drag = { id: e.pointerId, rec, con, x: b.position.x, y: b.position.y };
+      dragState = { id: e.pointerId, rec, con, x: b.position.x, y: b.position.y };
+      rec.flingUntil = Infinity; flung.add(rec);
       try { canvas.setPointerCapture(e.pointerId); } catch {}
     });
     canvas.addEventListener('pointermove', (e) => {
-      if (!drag || e.pointerId !== drag.id) return;
+      if (!dragState || e.pointerId !== dragState.id) return;
       e.preventDefault();
-      drag.con.pointA = toWorld(e);
-      Sleeping.set(drag.rec.body, false);
+      dragState.con.pointA = toWorld(e);
+      Sleeping.set(dragState.rec.body, false);
     });
     const end = (e) => {
-      if (!drag || e.pointerId !== drag.id) return;
-      const { rec, con, x, y } = drag;
-      drag = null;
+      if (!dragState || e.pointerId !== dragState.id) return;
+      const { rec, con, x, y } = dragState;
+      dragState = null;
       Composite.remove(world, con);
+      rec.flingUntil = performance.now() + 4500; // a thrown emoji can still reach the fire
       const b = rec.body;
       onDragEnd(rec, Math.hypot(b.position.x - x, b.position.y - y));
     };
@@ -754,6 +901,20 @@ Reply as JSON {"fits": boolean, "reason": string}. The reason is in English, ONE
       tap() { if (ok('vt', 120)) buzz(18); },
       attach() { if (ok('a', 45)) { tone(1500, 900, 0.05, 'triangle', 0.07); } if (ok('va', 110)) buzz(28); },
       drop() { if (ok('d', 60)) tone(420, 130, 0.16, 'sine', 0.08); if (ok('vd', 150)) buzz(16); },
+      burn() {
+        if (prefs.sound && audio && audio.state === 'running') {
+          const t = audio.currentTime, len = Math.floor(audio.sampleRate * 0.45);
+          const buf = audio.createBuffer(1, len, audio.sampleRate), d = buf.getChannelData(0);
+          for (let i = 0; i < len; i++) d[i] = (Math.random() * 2 - 1) * (1 - i / len);
+          const src = audio.createBufferSource(), flt = audio.createBiquadFilter(), g = audio.createGain();
+          src.buffer = buf; flt.type = 'bandpass'; flt.Q.value = 0.9;
+          flt.frequency.setValueAtTime(2600, t); flt.frequency.exponentialRampToValueAtTime(400, t + 0.45);
+          g.gain.setValueAtTime(0.0001, t); g.gain.exponentialRampToValueAtTime(0.16, t + 0.03); g.gain.exponentialRampToValueAtTime(0.0001, t + 0.45);
+          src.connect(flt).connect(g).connect(audio.destination); src.start(t);
+        }
+        tone(240, 70, 0.3, 'sawtooth', 0.05);
+        buzz([18, 24, 36]);
+      },
       win() { [660, 880, 1320].forEach((f, i) => tone(f, f, 0.12, 'triangle', 0.08, i * 0.09)); buzz([40, 50, 40, 50, 90]); },
       wrong() { tone(220, 150, 0.18, 'square', 0.04); buzz([60, 60, 60]); },
     };
@@ -1125,7 +1286,7 @@ Reply JSON {"word": string, "accept": [string], "hints": [string]}.`,
 
   function ensureRec(ch) {
     let rec = byChar.get(norm(ch));
-    if (rec) return rec;
+    if (rec) { if (rec.state === 'gone') revive(rec, true); return rec; }
     const e = allEntries.get(norm(ch));
     if (!e || !atlasCtx) return null;
     let i;
@@ -1552,7 +1713,7 @@ Reply JSON {"ok": boolean, "corrected": string, "note": string}.`,
     setupMouse();
     loading.classList.add('hide');
     if (!hasAccess() && !DEMO) openModal(); else maybeIntro();
-    window.__emodji = { recs, active, setResults, engine, tilt, runSearch, shake };
+    window.__emodji = { recs, active, setResults, engine, tilt, runSearch, shake, burn, fireGeom, flung };
     requestAnimationFrame(frame);
   })();
 })();
