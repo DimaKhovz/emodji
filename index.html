@@ -163,6 +163,14 @@
   #fireBtn .dot { width: 4px; height: 4px; border-radius: 50%; background: #4a4f86; box-shadow: inset 0 1px 1px rgba(0,0,0,.5); transition: background .2s, box-shadow .2s; }
   #fireBtn.on .dot { background: #ffb457; box-shadow: 0 0 5px rgba(255,160,60,.8); }
   #fireBtn:focus-visible { box-shadow: inset 0 2px 4px rgba(0,0,0,.75), 0 0 0 2px var(--accent); }
+  /* hand-drawn icons (images live in icons.css) */
+  .ic { display: inline-block; flex: none; width: 26px; height: 26px; background: center / contain no-repeat; pointer-events: none; }
+  .tbtn .ic { filter: drop-shadow(0 1px 1px rgba(0,0,0,.4)); }
+  .ic.sm { width: 1.2em; height: 1.2em; vertical-align: -.25em; margin: 0 1px; }
+  body.mobile .tbtn .ic { width: 22px; height: 22px; }
+  .tbtn .ico { width: 26px; height: 26px; filter: drop-shadow(0 1px 1px rgba(0,0,0,.4)); }
+  body.mobile .tbtn .ico { width: 22px; height: 22px; }
+  .icoSlot { display: inline-flex; }
   .tbtn.dim { opacity: .38; }
   .tbtn.busy { opacity: .6; pointer-events: none; }
   .lrow { display: flex; align-items: center; justify-content: space-between; gap: 12px; font-size: 13px; color: var(--muted); }
@@ -266,6 +274,8 @@
   body.mobile #card { margin: 0 auto; padding: 16px; gap: 10px; }
   body.mobile #card .row { position: sticky; bottom: -16px; margin: 4px -16px -16px; padding: 10px 16px; background: #15173a; border-top: 1px solid var(--glass-b); }
 </style>
+<link rel="stylesheet" href="icons-anim.css?v=24">
+<link rel="stylesheet" href="icon-anim.css?v=24">
 </head>
 <body>
 <canvas id="world"></canvas>
@@ -277,17 +287,17 @@
 
 <div id="tools">
   <div id="modes">
-    <button class="tbtn on" data-mode="magnet" data-i18n-title="modeT.magnet">🧲<span data-i18n="mode.magnet"></span></button>
-    <button class="tbtn" data-mode="story" data-i18n-title="modeT.story">📖<span data-i18n="mode.story"></span></button>
-    <button class="tbtn" data-mode="defend" data-i18n-title="modeT.defend">🛡️<span data-i18n="mode.defend"></span></button>
-    <button class="tbtn" data-mode="guess" data-i18n-title="modeT.guess">❓<span data-i18n="mode.guess"></span></button>
+    <button class="tbtn on" data-mode="magnet" data-i18n-title="modeT.magnet"><span class="icoSlot" data-ico="magnet"><i class="ic ic-magnet"></i></span><span data-i18n="mode.magnet"></span></button>
+    <button class="tbtn" data-mode="story" data-i18n-title="modeT.story"><span class="icoSlot" data-ico="book"><i class="ic ic-book"></i></span><span data-i18n="mode.story"></span></button>
+    <button class="tbtn" data-mode="defend" data-i18n-title="modeT.defend"><span class="icoSlot" data-ico="shield"><i class="ic ic-shield"></i></span><span data-i18n="mode.defend"></span></button>
+    <button class="tbtn" data-mode="guess" data-i18n-title="modeT.guess"><span class="icoSlot" data-ico="question"><i class="ic ic-question"></i></span><span data-i18n="mode.guess"></span></button>
   </div>
   <div id="acts">
-    <button class="tbtn" id="peelBtn" data-i18n-title="t.peel">✂️</button>
-    <button class="tbtn" id="searchBtn" data-i18n-title="t.search">🔍</button>
-    <button class="tbtn" id="copyBtn" data-i18n-title="t.copy">📋</button>
-    <button class="tbtn" id="histBtn" data-i18n-title="t.hist">🕘</button>
-    <button class="tbtn" id="gear" data-i18n-title="t.settings">⚙</button>
+    <button class="tbtn" id="peelBtn" data-i18n-title="t.peel"><span class="icoSlot" data-ico="scissors"><i class="ic ic-scissors"></i></span></button>
+    <button class="tbtn" id="searchBtn" data-i18n-title="t.search"><span class="icoSlot" data-ico="magnifier"><i class="ic ic-magnifier"></i></span></button>
+    <button class="tbtn" id="copyBtn" data-i18n-title="t.copy"><span class="icoSlot" data-ico="clipboard"><i class="ic ic-clipboard"></i></span></button>
+    <button class="tbtn" id="histBtn" data-i18n-title="t.hist"><span class="icoSlot" data-ico="clock"><i class="ic ic-clock"></i></span></button>
+    <button class="tbtn" id="gear" data-i18n-title="t.settings"><span class="icoSlot" data-ico="gear"><i class="ic ic-gear"></i></span></button>
   </div>
 </div>
 <div id="searchBar"><input id="searchInput" type="search" autocomplete="off" spellcheck="false" data-i18n-ph="search.ph"><button class="tbtn" id="searchClose" data-i18n-title="t.close">✕</button></div>
@@ -333,7 +343,7 @@
 
 <div id="modal">
   <div id="card">
-    <h2><span data-i18n="set.title"></span> <small id="verNote" style="font-weight:400;color:var(--muted)">v20</small></h2>
+    <h2><span data-i18n="set.title"></span> <small id="verNote" style="font-weight:400;color:var(--muted)">v24</small></h2>
     <div class="lrow"><span data-i18n="set.lang"></span>
       <div id="langSel"><button type="button" data-lang="en">English</button><button type="button" data-lang="ru">Русский</button></div>
     </div>
@@ -370,8 +380,9 @@
 </div>
 
 <script src="matter.min.js"></script>
-<script src="emoji-data.js?v=20"></script>
-<script src="i18n.js?v=20"></script>
-<script src="app.js?v=20"></script>
+<script src="emoji-data.js?v=24"></script>
+<script src="i18n.js?v=24"></script>
+<script src="icon-anim.js?v=24"></script>
+<script src="app.js?v=24"></script>
 </body>
 </html>

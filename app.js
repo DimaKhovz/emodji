@@ -1809,9 +1809,23 @@ Reply JSON {"ok": boolean, "corrected": string, "note": string}.`,
   window.addEventListener('resize', onResize);
   if (MOBILE && vv) { vv.addEventListener('resize', onResize); vv.addEventListener('scroll', onResize); }
 
+  // ---------- animated icons (see icon-anim.js) ----------
+  function initIcons() {
+    if (!window.IconAnim) return; // the static drawings stay if the script is missing
+    document.querySelectorAll('.icoSlot').forEach(slot => {
+      try {
+        const host = IconAnim.create(slot.dataset.ico);
+        const btn = slot.closest('button');
+        slot.replaceWith(host);
+        if (btn) IconAnim.attach(btn, host);
+      } catch (e) { /* keep the static icon */ }
+    });
+  }
+
   // ---------- boot ----------
   (async () => {
     applyI18n();
+    initIcons();
     measure();
     const list = MOBILE
       ? window.EMOJI_DATA.filter((e, i) => e[3] && i % 10 < 7) // main emojis only

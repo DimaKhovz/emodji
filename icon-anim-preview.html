@@ -1,0 +1,218 @@
+<!doctype html>
+<html lang="ru">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Превью анимации иконок</title>
+<link rel="stylesheet" href="icons-anim.css">
+<link rel="stylesheet" href="icon-anim.css">
+<style>
+  :root { --bg: #0d0f1f; --glass: rgba(255,255,255,.07); --glass-b: rgba(255,255,255,.16); --text: #f2f3ff; --muted: #8d90b8; --accent: #7c8cff; }
+  * { box-sizing: border-box; }
+  body { margin: 0; padding: 18px 16px 60px; background: radial-gradient(1200px 700px at 50% 0%, #1a1740, var(--bg) 70%); color: var(--text); font: 14px/1.45 system-ui, "Segoe UI", sans-serif; }
+  h1 { font-size: 20px; margin: 0 0 4px; } h2 { font-size: 16px; margin: 30px 0 10px; }
+  p.n { color: var(--muted); margin: 0 0 10px; }
+  .grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(230px, 1fr)); gap: 12px; }
+  .card { background: var(--glass); border: 1px solid var(--glass-b); border-radius: 16px; padding: 12px; text-align: center; }
+  .card h3 { margin: 0 0 2px; font-size: 14px; } .card small { color: var(--muted); display: block; min-height: 34px; }
+  .stage { display: block; margin: 8px auto; width: 190px; height: 190px; padding: 0; border: 1px dashed rgba(255,255,255,.12); border-radius: 18px; background: rgba(0,0,0,.18); cursor: pointer; touch-action: manipulation; position: relative; }
+  .stage .ico { position: absolute; left: 15px; top: 15px; width: 160px; height: 160px; }
+  .row { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; margin: 8px 0; }
+  .btn { font: 600 13px system-ui; padding: 8px 12px; border-radius: 10px; border: 1px solid var(--glass-b); background: var(--glass); color: var(--text); cursor: pointer; }
+  .btn.primary { background: var(--accent); border-color: var(--accent); color: #0b0d24; }
+  .film { display: grid; grid-template-columns: 90px repeat(9, 1fr); gap: 4px; align-items: center; margin-bottom: 6px; }
+  .film .lab { font-size: 12px; color: var(--muted); }
+  .frame { aspect-ratio: 1; background: rgba(0,0,0,.22); border-radius: 8px; position: relative; }
+  .frame .ico { position: absolute; left: 8%; top: 8%; width: 84%; height: 84%; }
+  .film.head .t { font-size: 11px; color: var(--muted); text-align: center; }
+  .tbar { display: inline-flex; gap: 6px; padding: 10px; background: rgba(0,0,0,.25); border-radius: 14px; }
+  .tbtn { display: inline-flex; align-items: center; justify-content: center; border-radius: 12px; border: 1px solid var(--glass-b); background: var(--glass); color: var(--text); padding: 0; cursor: pointer; touch-action: manipulation; }
+  .tbar.m .tbtn { width: 32px; height: 32px; } .tbar.m .ico { width: 22px; height: 22px; }
+  .tbar.d .tbtn { width: 40px; height: 40px; } .tbar.d .ico { width: 26px; height: 26px; }
+  table { border-collapse: collapse; width: 100%; font-size: 13px; }
+  th, td { border-bottom: 1px solid var(--glass-b); padding: 5px 8px; text-align: left; }
+  .ok { color: #7df0b0; } .bad { color: #ff9a9a; }
+  #log { white-space: pre-wrap; color: var(--muted); font: 12px ui-monospace, monospace; }
+</style>
+</head>
+<body>
+<h1>Анимация иконок: превью до интеграции</h1>
+<p class="n">Нажми на любую иконку (на крупных карточках и на панелях ниже). Реакция идёт на pointerdown. Точка нажатия важна для магнита и щита.</p>
+
+<div class="row">
+  <label><input type="checkbox" id="slow"> замедление ×4 (чтобы разглядеть части)</label>
+  <button class="btn" id="playAll">▶ Сыграть все</button>
+</div>
+
+<h2>1. Каждая иконка крупно</h2>
+<div class="grid" id="big"></div>
+
+<h2>2. Покадрово (одна и та же анимация, остановленная в разные моменты)</h2>
+<div id="film"></div>
+
+<h2>3. В реальном размере панели</h2>
+<p class="n">Телефон (кнопка 32 px, иконка 22 px) и компьютер (40 px / 26 px). Нажимай по очереди и быстро повторно.</p>
+<div class="row"><div class="tbar m" id="barM"></div><div class="tbar d" id="barD"></div></div>
+
+<h2>4. Автотесты</h2>
+<div class="row"><button class="btn primary" id="runTests">Запустить тесты</button></div>
+<div id="results"></div>
+<div id="log"></div>
+
+<script src="icon-anim.js"></script>
+<script>
+(function () {
+  var NAMES = IconAnim.NAMES;
+  var TITLE = {
+    magnet: ['Магнит', 'будто магнит дёрнулся к пальцу'],
+    book: ['Книга', 'раскрылась и показала содержимое'],
+    shield: ['Щит', 'выдержал удар'],
+    question: ['Вопрос', 'вопрос повис в воздухе'],
+    scissors: ['Ножницы', 'сделали щёлк'],
+    magnifier: ['Лупа', 'посмотрел вокруг'],
+    clipboard: ['Планшет', 'отметил выполненное'],
+    clock: ['Часы', 'время пошло'],
+    gear: ['Шестерёнка', 'механизм ожил']
+  };
+  var slow = document.getElementById('slow');
+  function applySlow(host) { if (slow.checked) host._st.anims.forEach(function (a) { a.playbackRate = 0.25; }); }
+
+  // ---- 1. big cards
+  var big = document.getElementById('big'), bigHosts = {};
+  NAMES.forEach(function (n) {
+    var c = document.createElement('div'); c.className = 'card';
+    c.innerHTML = '<h3>' + TITLE[n][0] + '</h3><small>«' + TITLE[n][1] + '»</small>';
+    var stage = document.createElement('button'); stage.className = 'stage'; stage.setAttribute('aria-label', n);
+    var host = IconAnim.create(n); stage.appendChild(host); c.appendChild(stage); big.appendChild(c);
+    IconAnim.attach(stage, host);
+    stage.addEventListener('pointerdown', function () { applySlow(host); });
+    bigHosts[n] = host;
+  });
+  document.getElementById('playAll').addEventListener('click', function () {
+    NAMES.forEach(function (n, i) { setTimeout(function () { IconAnim.play(bigHosts[n], { x: 0.8, y: 0.25 }); applySlow(bigHosts[n]); }, i * 120); });
+  });
+
+  // ---- 2. filmstrip
+  var film = document.getElementById('film');
+  var FR = [0, 0.08, 0.16, 0.26, 0.38, 0.5, 0.62, 0.76, 0.92];
+  var head = document.createElement('div'); head.className = 'film head'; head.innerHTML = '<span></span>' + FR.map(function (f) { return '<span class="t">' + Math.round(f * 100) + '%</span>'; }).join('');
+  film.appendChild(head);
+  NAMES.forEach(function (n) {
+    var row = document.createElement('div'); row.className = 'film';
+    var lab = document.createElement('span'); lab.className = 'lab'; lab.textContent = TITLE[n][0]; row.appendChild(lab);
+    FR.forEach(function (f) {
+      var fr = document.createElement('div'); fr.className = 'frame';
+      var h = IconAnim.create(n); fr.appendChild(h); row.appendChild(fr);
+      row._pending = row._pending || []; row._pending.push([h, f]);
+    });
+    film.appendChild(row);
+    // start every frame's animation, then freeze at its moment
+    row._pending.forEach(function (p) {
+      IconAnim.play(p[0], { x: 0.85, y: 0.22 });
+      var end = 0; p[0]._st.anims.forEach(function (a) { var t = a.effect.getComputedTiming().endTime; if (t > end) end = t; });
+      IconAnim.seek(p[0], end * p[1]);
+    });
+  });
+
+  // ---- 3. real size bars
+  var barHosts = [];
+  [['barM'], ['barD']].forEach(function (b) {
+    var bar = document.getElementById(b[0]);
+    NAMES.forEach(function (n) {
+      var btn = document.createElement('button'); btn.className = 'tbtn'; btn.setAttribute('aria-label', n); btn.dataset.name = n;
+      var host = IconAnim.create(n); btn.appendChild(host); bar.appendChild(btn);
+      IconAnim.attach(btn, host); barHosts.push([btn, host]);
+    });
+  });
+
+  // ---- 4. tests
+  var results = document.getElementById('results'), log = document.getElementById('log');
+  function sleep(ms) { return new Promise(function (r) { setTimeout(r, ms); }); }
+  function down(btn, x, y) {
+    var r = btn.getBoundingClientRect();
+    btn.dispatchEvent(new PointerEvent('pointerdown', { bubbles: true, clientX: x == null ? r.left + r.width * 0.8 : x, clientY: y == null ? r.top + r.height * 0.3 : y, pointerId: 1, button: 0 }));
+  }
+  function up() { window.dispatchEvent(new PointerEvent('pointerup', { pointerId: 1 })); }
+  function running(host) { return host._st.anims.filter(function (a) { return a.playState === 'running' || a.playState === 'pending'; }); }
+
+  async function testRepeat(btn, host) {
+    var ok = true, notes = [];
+    for (var i = 0; i < 5; i++) {
+      var before = host._st.anims.slice();
+      down(btn); await sleep(8);
+      var nowRun = running(host);
+      var prevAlive = before.filter(function (a) { return a.playState !== 'idle' && a.playState !== 'finished'; });
+      var fresh = host._st.anims.filter(function (a) { return before.indexOf(a) < 0; });
+      var okRound = fresh.length > 0 && prevAlive.length === 0 && nowRun.length > 0 &&
+        fresh.every(function (a) { return (a.currentTime || 0) < 70; });
+      if (!okRound) { ok = false; notes.push('нажатие ' + (i + 1) + ': новых=' + fresh.length + ', старых живых=' + prevAlive.length); }
+      up(); await sleep(70);
+    }
+    await sleep(40); IconAnim.reset(host);
+    return { ok: ok, notes: notes.join('; ') };
+  }
+  async function testReduced(btn, host) {
+    var orig = window.matchMedia;
+    window.matchMedia = function (q) { return { matches: /reduce/.test(q), media: q, addEventListener: function () {}, removeEventListener: function () {} }; };
+    try {
+      IconAnim.reset(host);
+      if (btn.getAnimations) btn.getAnimations({ subtree: false }).forEach(function (a) { a.cancel(); });
+      down(btn); await sleep(10);
+      var as = host._st.anims.slice();
+      var props = {}; as.forEach(function (a) { a.effect.getKeyframes().forEach(function (k) { Object.keys(k).forEach(function (p) { if (['offset', 'computedOffset', 'easing', 'composite'].indexOf(p) < 0) props[p] = 1; }); }); });
+      var onlyOpacity = Object.keys(props).length > 0 && Object.keys(props).every(function (p) { return p === 'opacity'; });
+      var btnAnims = btn.getAnimations ? btn.getAnimations({ subtree: false }).length : 0;
+      up(); await sleep(30);
+      if (btn.getAnimations) btnAnims = Math.max(btnAnims, btn.getAnimations({ subtree: false }).length);
+      return { ok: onlyOpacity && btnAnims === 0, notes: 'свойства: ' + Object.keys(props).join(',') + '; анимаций кнопки: ' + btnAnims };
+    } finally { window.matchMedia = orig; IconAnim.reset(host); }
+  }
+  async function testLeave(btn, host) {
+    IconAnim.reset(host);
+    down(btn); await sleep(20);
+    // the finger slides off the button; pointerup arrives somewhere else
+    document.body.dispatchEvent(new PointerEvent('pointermove', { bubbles: true, clientX: 5, clientY: 5, pointerId: 1 }));
+    await sleep(40); up();
+    await sleep(60);
+    var alive = running(host).length;
+    return { ok: alive > 0, notes: 'играет после ухода пальца: ' + alive };
+  }
+  async function testHold(btn, host) {
+    IconAnim.reset(host);
+    down(btn); await sleep(30);
+    var a = host._st.anims.slice();
+    // one single play: every animation has exactly 1 iteration (no loop), so holding the finger cannot repeat it
+    var finite = a.length > 0 && a.every(function (x) { var t = x.effect.getComputedTiming(); return t.iterations === 1; });
+    // fast-forward past the end while the "finger" is still down: nothing may restart
+    a.forEach(function (x) { try { x.finish(); } catch (e) {} });
+    await sleep(60);
+    var restarted = host._st.anims.length !== a.length || a.some(function (x) { return x.playState === 'running'; });
+    var held = a.filter(function (x) { return x.playState === 'finished' || x.playState === 'idle'; }).length;
+    up();
+    return { ok: finite && !restarted, notes: 'итераций=1: ' + finite + '; после конца при удержании заново не играет: ' + (!restarted) + ' (' + held + '/' + a.length + ')' };
+  }
+
+  document.getElementById('runTests').addEventListener('click', async function () {
+    results.innerHTML = '<p class="n">идёт проверка…</p>';
+    var rows = [], t0 = performance.now();
+    var hosts = barHosts.slice(0, NAMES.length); // the first bar
+    for (var i = 0; i < hosts.length; i++) {
+      var btn = hosts[i][0], host = hosts[i][1], n = btn.dataset.name;
+      var r1 = await testRepeat(btn, host); await sleep(300);
+      var r2 = await testLeave(btn, host); await sleep(1100);
+      var r3 = await testHold(btn, host); await sleep(300);
+      var r4 = await testReduced(btn, host); await sleep(300);
+      rows.push([TITLE[n][0], r1, r2, r3, r4]);
+    }
+    var html = '<table><tr><th>Иконка</th><th>5 нажатий подряд</th><th>палец ушёл с кнопки</th><th>удержание: один раз</th><th>reduced-motion</th></tr>';
+    rows.forEach(function (r) {
+      html += '<tr><td>' + r[0] + '</td>' + r.slice(1).map(function (x) { return '<td class="' + (x.ok ? 'ok' : 'bad') + '">' + (x.ok ? '✓' : '✗') + (x.notes ? ' <small>' + x.notes + '</small>' : '') + '</td>'; }).join('') + '</tr>';
+    });
+    results.innerHTML = html + '</table>';
+    window.__testRows = rows.map(function (r) { return [r[0], r[1].ok, r[2].ok, r[3].ok, r[4].ok, r[1].notes, r[2].notes, r[3].notes, r[4].notes]; });
+    window.__testsDone = true;
+  });
+})();
+</script>
+</body>
+</html>

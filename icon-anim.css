@@ -1,0 +1,24 @@
+/* Layers for the animated icons (see icon-anim.js). Images come from icons-anim.css as --img. */
+.ic { background-image: var(--img); background-position: center; background-size: contain; background-repeat: no-repeat; }
+.ico { position: relative; display: inline-block; flex: none; width: 26px; height: 26px; pointer-events: none; }
+.ico .lay, .ico .grp, .ico .sheen, .ico .ripple, .ico .lsvg { position: absolute; inset: 0; }
+.ico .lay { background: var(--img) center / contain no-repeat; will-change: transform; }
+.ico .grp { transform-origin: 50% 50%; }
+.ico .lsvg { width: 100%; height: 100%; overflow: visible; }
+.ico .sheen {
+  background: linear-gradient(105deg, transparent 38%, rgba(255,255,255,.62) 50%, transparent 62%) 100% 0 / 260% 100% no-repeat;
+  -webkit-mask: var(--img) center / contain no-repeat; mask: var(--img) center / contain no-repeat;
+  mix-blend-mode: screen; opacity: 0;
+}
+.ico .glow {
+  position: absolute; width: 36%; height: 36%; border-radius: 50%; opacity: 0; mix-blend-mode: screen;
+  background: radial-gradient(circle, rgba(255,255,235,.98), rgba(255,226,110,.55) 42%, transparent 72%);
+  transform: translate(-50%, -50%);
+}
+.ico .ripple { -webkit-mask: var(--img) center / contain no-repeat; mask: var(--img) center / contain no-repeat; overflow: hidden; }
+.ico .ring {
+  position: absolute; width: 34%; height: 34%; border-radius: 50%; opacity: 0;
+  border: 2px solid rgba(255,255,255,.95); box-shadow: 0 0 6px rgba(160,230,255,.9);
+  transform: translate(-50%, -50%);
+}
+@media (prefers-reduced-motion: reduce) { .ico * { transition: none !important; } }
