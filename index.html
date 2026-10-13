@@ -140,26 +140,35 @@
   #diffBtn { font: 600 12px Inter, sans-serif; padding: 4px 10px; border-radius: 99px; cursor: pointer; color: var(--text);
     border: 1px solid var(--glass-b); background: var(--glass); }
   #diffBtn.on { background: rgba(255,214,120,.18); border-color: rgba(255,214,120,.6); color: #ffd479; }
-  /* rocker switch for the fire: calm when idle, springy click when pressed */
+  /* rocker switch for the fire: calm when idle, springy click when pressed (lives in the hint row) */
+  .fireSw { display: inline-flex; align-items: center; gap: 5px; }
+  .fireSw::before { content: '🔥'; font: 12px "Noto Color Emoji","Segoe UI Emoji",sans-serif; opacity: .8; }
+  .fireSw.off::before { filter: grayscale(1); opacity: .4; }
   #fireBtn {
-    position: fixed; z-index: 6; width: 58px; height: 32px; padding: 0; border-radius: 16px; cursor: pointer;
+    position: relative; flex: none; width: 46px; height: 26px; padding: 0; border-radius: 13px; cursor: pointer;
     border: 1px solid rgba(255,255,255,.1);
     background: linear-gradient(180deg, #0b0d20, #171a38);
     box-shadow: inset 0 2px 4px rgba(0,0,0,.75), inset 0 -1px 0 rgba(255,255,255,.05), 0 1px 0 rgba(255,255,255,.06);
     -webkit-tap-highlight-color: transparent; outline: none;
   }
   #fireBtn .cap {
-    position: absolute; top: 3px; left: 3px; width: 34px; height: 24px; border-radius: 12px;
+    position: absolute; top: 2px; left: 2px; width: 26px; height: 20px; border-radius: 10px;
     background: linear-gradient(145deg, #5a6096, #353a72 62%, #2a2e60);
     box-shadow: 0 2px 4px rgba(0,0,0,.55), inset 0 1px 0 rgba(255,255,255,.3), inset 0 -2px 3px rgba(0,0,0,.3);
     transition: left .24s cubic-bezier(.3,1.7,.5,1), transform .12s ease-out;
     display: grid; place-items: center;
   }
-  #fireBtn.on .cap { left: 19px; }
+  #fireBtn.on .cap { left: 16px; }
   #fireBtn:active .cap { transform: scaleX(1.1) scaleY(.92); }
   #fireBtn .dot { width: 4px; height: 4px; border-radius: 50%; background: #4a4f86; box-shadow: inset 0 1px 1px rgba(0,0,0,.5); transition: background .2s, box-shadow .2s; }
   #fireBtn.on .dot { background: #ffb457; box-shadow: 0 0 5px rgba(255,160,60,.8); }
   #fireBtn:focus-visible { box-shadow: inset 0 2px 4px rgba(0,0,0,.75), 0 0 0 2px var(--accent); }
+  .tbtn.dim { opacity: .38; }
+  .tbtn.busy { opacity: .6; pointer-events: none; }
+  .lrow { display: flex; align-items: center; justify-content: space-between; gap: 12px; font-size: 13px; color: var(--muted); }
+  #langSel { display: flex; gap: 6px; }
+  #card #langSel button { padding: 7px 14px; font-size: 13px; }
+  #card #langSel button.on { background: var(--accent); border-color: var(--accent); color: #0b0d24; }
   #toast {
     position: fixed; left: 50%; bottom: 24px; z-index: 40; transform: translate(-50%, 20px); opacity: 0;
     padding: 10px 16px; border-radius: 12px; background: rgba(18,20,48,.95); border: 1px solid var(--glass-b);
@@ -243,7 +252,8 @@
   #ver { opacity: .35; margin-left: 8px; }
   body.mobile #field { font-size: 17px; padding: 11px 14px; border-radius: 14px 14px 0 0; }
   body.mobile #tools { top: calc(var(--vvt, 0px) + 8px); left: 10px; right: 10px; }
-  body.mobile .tbtn { height: 36px; min-width: 36px; padding: 0; font-size: 17px; }
+  body.mobile .tbtn { height: 32px; min-width: 32px; padding: 0; font-size: 16px; }
+  body.mobile #tools > div { gap: 4px; }
   body.mobile #modes .tbtn span { display: none; }
   body.mobile #histPanel { right: 10px; top: calc(var(--vvt, 0px) + 50px); }
   body.mobile #bubble { width: calc(100vw - 20px); padding: 11px 13px; }
@@ -261,109 +271,107 @@
 <canvas id="world"></canvas>
 
 <div id="bar">
-  <div id="hint"><span id="status">Напиши что-нибудь, например: что надеть зимой</span><span class="hr"><span id="count"></span><button id="diffBtn" type="button">😀 Очевидные</button></span></div>
-  <input id="field" type="search" autocomplete="off" spellcheck="false" placeholder="Что хочешь найти?" autofocus>
+  <div id="hint"><span id="status" data-i18n="status.magnet"></span><span class="hr"><span id="count"></span><span class="fireSw"><button id="fireBtn" type="button" role="switch" aria-checked="true"><span class="cap"><i class="dot"></i></span></button></span><button id="diffBtn" type="button"></button></span></div>
+  <input id="field" type="search" autocomplete="off" spellcheck="false" data-i18n-ph="ph.magnet" autofocus>
 </div>
 
 <div id="tools">
   <div id="modes">
-    <button class="tbtn on" data-mode="magnet" title="Магнит">🧲<span>Магнит</span></button>
-    <button class="tbtn" data-mode="story" title="Смайлик-история">📖<span>История</span></button>
-    <button class="tbtn" data-mode="defend" title="Защити смайлик">🛡️<span>Защити</span></button>
-    <button class="tbtn" data-mode="guess" title="Угадай слово">❓<span>Угадай</span></button>
+    <button class="tbtn on" data-mode="magnet" data-i18n-title="modeT.magnet">🧲<span data-i18n="mode.magnet"></span></button>
+    <button class="tbtn" data-mode="story" data-i18n-title="modeT.story">📖<span data-i18n="mode.story"></span></button>
+    <button class="tbtn" data-mode="defend" data-i18n-title="modeT.defend">🛡️<span data-i18n="mode.defend"></span></button>
+    <button class="tbtn" data-mode="guess" data-i18n-title="modeT.guess">❓<span data-i18n="mode.guess"></span></button>
   </div>
   <div id="acts">
-    <button class="tbtn" id="searchBtn" title="Найти смайлик в куче">🔍</button>
-    <button class="tbtn" id="copyBtn" title="Скопировать смайлики">📋</button>
-    <button class="tbtn" id="histBtn" title="История запросов">🕘</button>
-    <button class="tbtn" id="gear" title="Настройки">⚙</button>
+    <button class="tbtn" id="peelBtn" data-i18n-title="t.peel">✂️</button>
+    <button class="tbtn" id="searchBtn" data-i18n-title="t.search">🔍</button>
+    <button class="tbtn" id="copyBtn" data-i18n-title="t.copy">📋</button>
+    <button class="tbtn" id="histBtn" data-i18n-title="t.hist">🕘</button>
+    <button class="tbtn" id="gear" data-i18n-title="t.settings">⚙</button>
   </div>
 </div>
-<div id="searchBar"><input id="searchInput" type="search" autocomplete="off" spellcheck="false" placeholder="Найти смайлик: мото, cat, пицца…"><button class="tbtn" id="searchClose" title="Закрыть">✕</button></div>
-<button id="fireBtn" type="button" role="switch" aria-checked="true" title="Огонь"><span class="cap"><i class="dot"></i></span></button>
+<div id="searchBar"><input id="searchInput" type="search" autocomplete="off" spellcheck="false" data-i18n-ph="search.ph"><button class="tbtn" id="searchClose" data-i18n-title="t.close">✕</button></div>
 <div id="histPanel"></div>
 <div id="toast"></div>
-<div id="coach"><div class="ch"><span id="coachTitle"></span><button id="coachClose" title="Закрыть">×</button></div><div id="coachBody"></div><div id="coachActions"></div></div>
+<div id="coach"><div class="ch"><span id="coachTitle"></span><button id="coachClose" data-i18n-title="t.close">×</button></div><div id="coachBody"></div><div id="coachActions"></div></div>
 <div id="tip"></div>
 <div id="bubble">
-  <div class="bh"><span id="bEmoji"></span><span id="bVerdict"></span><button id="bSpeak" title="Listen">🔊</button><button id="bClose" title="Закрыть">×</button></div>
+  <div class="bh"><span id="bEmoji"></span><span id="bVerdict"></span><button id="bSpeak" title="Listen">🔊</button><button id="bClose" data-i18n-title="t.close">×</button></div>
   <p id="bText"></p>
   <input id="bArg" type="search" autocomplete="off" spellcheck="false" placeholder="Argue back… (Enter)">
   <div id="bActions"></div>
 </div>
-<div id="loading">Собираю эмодзи…</div>
+<div id="loading" data-i18n="loading"></div>
 
 <div id="welcome">
   <div id="wcard">
-    <h2>Добро пожаловать в Emodji Magnet 🧲</h2>
-    <p class="wlead">Пишешь любую фразу, а нейросеть подбирает смайлики и <b>примагничивает их к твоей строке</b>. Лишние отваливаются и падают обратно в кучу.</p>
+    <h2 data-i18n="w.title"></h2>
+    <p class="wlead" data-i18n-html="w.lead"></p>
 
     <div class="wbox">
-      <b>✨ Главная фишка: креативные связи</b>
-      <p>Нейросеть умеет находить не только очевидные смайлики, но и <b>креативные, остроумные связи</b> (включаются кнопкой «✨ Креативные»). Например, 😅 с каплей пота подойдёт к слову «бег» или «спортзал» (он же вспотел), а 😂 с мокрыми глазами к «мотоцикл» (слёзы летят от скорости). Если связь логичная, смайлик подходит.</p>
-      <p id="wDevice"></p>
+      <b data-i18n="w.boxTitle"></b>
+      <p data-i18n-html="w.boxText"></p>
+      <p id="wDevice" data-i18n-html="w.modes"></p>
     </div>
 
-    <b class="wh">Что можно делать</b>
+    <b class="wh" data-i18n="w.what"></b>
     <ul>
-      <li><b>Печатай запрос</b> и жми Enter: смайлики примагнитятся к строке.</li>
-      <li><b>Тащи пальцем:</b> смайлик из кучи к строке, и нейросеть решит, подходит ли он. Если нет, объяснит почему, и с ней можно <b>поспорить</b>: логичный довод её переубедит.</li>
-      <li><b>Нажми на смайлик</b>, чтобы узнать, почему он тут.</li>
-      <li><b>Переставляй</b> прилипшие смайлики куда угодно под строкой.</li>
-      <li><b>🔥 Огонь справа:</b> брось в него смайлик, и он сгорит. Так убираешь лишнее (основные смайлики из кучи сами вернутся через минуту). Тумблер под огнём включает и гасит его.</li>
-      <li>🔍 найти смайлик в куче (он подлетит и подсветится), 📋 скопировать ряд в мессенджер, 🕘 история запросов.</li>
-      <li>Режимы сверху: 🧲 магнит, 📖 история из смайликов, 🛡️ «защити смайлик», ❓ «угадай слово».</li>
-      <li>Объяснения на <b>английском</b>: нейросеть поправит твой английский, а кнопка 🔊 произнесёт фразу.</li>
-      <li class="mobileOnly">Встряхни телефон, и смайлики упадут (ещё раз, и вернутся). Наклони, и куча пересыплется.</li>
+      <li data-i18n-html="w.l1"></li>
+      <li data-i18n-html="w.l2"></li>
+      <li data-i18n-html="w.l3"></li>
+      <li data-i18n-html="w.l4"></li>
+      <li data-i18n-html="w.l5"></li>
+      <li data-i18n-html="w.l6"></li>
+      <li data-i18n-html="w.l7"></li>
+      <li data-i18n-html="w.l8"></li>
+      <li data-i18n-html="w.l9"></li>
+      <li class="mobileOnly" data-i18n-html="w.l10"></li>
     </ul>
-    <div class="wrow"><button id="wOk" class="primary">Понятно, поехали!</button></div>
+    <div class="wrow"><button id="wOk" class="primary" data-i18n="w.ok"></button></div>
   </div>
 </div>
 
 <div id="modal">
   <div id="card">
-    <h2>Настройки <small id="verNote" style="font-weight:400;color:var(--muted)">v19</small></h2>
-    <div id="setupHint">
-      <b>👋 Первый запуск. Всего два шага:</b>
-      <ol>
-        <li>Введи <b>код доступа</b>, который тебе дал владелец приложения.</li>
-        <li>Нажми <b>«Сохранить»</b> внизу.</li>
-      </ol>
-      <span>Свой ключ Gemini вводить не нужно: он уже спрятан на сервере владельца.</span>
+    <h2><span data-i18n="set.title"></span> <small id="verNote" style="font-weight:400;color:var(--muted)">v20</small></h2>
+    <div class="lrow"><span data-i18n="set.lang"></span>
+      <div id="langSel"><button type="button" data-lang="en">English</button><button type="button" data-lang="ru">Русский</button></div>
     </div>
-    <label>Код доступа
-      <input id="accessInput" class="secret" type="search" name="emodji-code-x" placeholder="Код от владельца приложения" autocomplete="off" autocapitalize="none" autocorrect="off" spellcheck="false" data-lpignore="true" data-1p-ignore data-form-type="other">
+    <div id="setupHint" data-i18n-html="set.first"></div>
+    <label><span data-i18n="set.code"></span>
+      <input id="accessInput" class="secret" type="search" name="emodji-code-x" data-i18n-ph="set.codePh" autocomplete="off" autocapitalize="none" autocorrect="off" spellcheck="false" data-lpignore="true" data-1p-ignore data-form-type="other">
     </label>
-    <small>Код выдал владелец приложения: с ним Gemini работает через его сервер, без твоего ключа.</small>
-    <label>Или свой API-ключ Gemini
+    <small data-i18n="set.codeNote"></small>
+    <label><span data-i18n="set.key"></span>
       <input id="keyInput" class="secret" type="search" name="emodji-key-x" placeholder="AIza…" autocomplete="off" autocapitalize="none" autocorrect="off" spellcheck="false" data-lpignore="true" data-1p-ignore data-form-type="other">
     </label>
-    <label>Модель
+    <label><span data-i18n="set.model"></span>
       <input id="modelInput" type="search" placeholder="gemini-2.5-flash">
     </label>
-    <small>Свой ключ хранится только в этом браузере и уходит напрямую в Google. Посмотреть или скопировать его после сохранения нельзя.</small>
-    <label>Адрес сервера (обычно не нужно трогать)
+    <small data-i18n="set.keyNote"></small>
+    <label><span data-i18n="set.server"></span>
       <input id="proxyInput" type="search" placeholder="https://….workers.dev" autocomplete="off">
     </label>
-    <button id="forgetBtn" class="linkbtn" type="button">Забыть ключ и код на этом устройстве</button>
-    <button id="helpBtn" class="linkbtn" type="button">Как пользоваться приложением</button>
-    <label>Модель озвучки (необязательно)
+    <button id="forgetBtn" class="linkbtn" type="button" data-i18n="set.forget"></button>
+    <button id="helpBtn" class="linkbtn" type="button" data-i18n="set.help"></button>
+    <label><span data-i18n="set.tts"></span>
       <input id="ttsModelInput" type="search" placeholder="gemini-2.5-flash-preview-tts">
     </label>
-    <label class="opt"><input id="optSound" type="checkbox"> Звуки</label>
-    <label class="opt mobileOnly"><input id="optVibe" type="checkbox"> Вибрация</label>
-    <label class="opt mobileOnly"><input id="optTilt" type="checkbox"> Наклон телефона двигает кучу</label>
-    <label class="opt mobileOnly"><input id="optShake" type="checkbox"> Встряхнуть — смайлики падают</label>
+    <label class="opt"><input id="optSound" type="checkbox"> <span data-i18n="set.sound"></span></label>
+    <label class="opt mobileOnly"><input id="optVibe" type="checkbox"> <span data-i18n="set.vibe"></span></label>
+    <label class="opt mobileOnly"><input id="optTilt" type="checkbox"> <span data-i18n="set.tilt"></span></label>
+    <label class="opt mobileOnly"><input id="optShake" type="checkbox"> <span data-i18n="set.shake"></span></label>
     <small id="vibeNote"></small>
     <div class="row">
-      <button id="cancelBtn">Закрыть</button>
-      <button id="saveBtn" class="primary">Сохранить</button>
+      <button id="cancelBtn" data-i18n="set.close"></button>
+      <button id="saveBtn" class="primary" data-i18n="set.save"></button>
     </div>
   </div>
 </div>
 
 <script src="matter.min.js"></script>
-<script src="emoji-data.js?v=19"></script>
-<script src="app.js?v=19"></script>
+<script src="emoji-data.js?v=20"></script>
+<script src="i18n.js?v=20"></script>
+<script src="app.js?v=20"></script>
 </body>
 </html>

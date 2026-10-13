@@ -27,6 +27,35 @@
   const params = new URLSearchParams(location.search);
   const DEMO = params.get('demo') !== null; // ?demo — without API, for checking physics
 
+  // ---------- language (English / Russian) ----------
+  const lang = (function () {
+    const p = params.get('lang');
+    if (p === 'en' || p === 'ru') {
+      store.set('lang', p);
+      try { params.delete('lang'); const q = params.toString(); history.replaceState(null, '', location.pathname + (q ? '?' + q : '') + location.hash); } catch (e) {}
+      return p;
+    }
+    const saved = store.get('lang');
+    if (saved === 'en' || saved === 'ru') return saved;
+    const nav = (navigator.languages && navigator.languages[0]) || navigator.language || 'en';
+    return /^ru/i.test(nav) ? 'ru' : 'en';
+  })();
+  function t(key, vars) {
+    const dict = window.I18N || {};
+    let str = (dict[lang] && dict[lang][key]);
+    if (str === undefined) str = (dict.en && dict.en[key]);
+    if (str === undefined) str = key;
+    if (vars) for (const k in vars) str = str.split('{' + k + '}').join(vars[k]);
+    return str;
+  }
+  function applyI18n() {
+    document.documentElement.lang = lang;
+    document.querySelectorAll('[data-i18n]').forEach(e => { e.textContent = t(e.dataset.i18n); });
+    document.querySelectorAll('[data-i18n-html]').forEach(e => { e.innerHTML = t(e.dataset.i18nHtml); });
+    document.querySelectorAll('[data-i18n-ph]').forEach(e => { e.placeholder = t(e.dataset.i18nPh); });
+    document.querySelectorAll('[data-i18n-title]').forEach(e => { e.title = t(e.dataset.i18nTitle); });
+  }
+
   const MOBILE = params.get('mobile') !== null || matchMedia('(max-width: 700px)').matches ||
     (matchMedia('(pointer: coarse)').matches && Math.min(screen.width, screen.height) < 700);
   document.body.classList.toggle('mobile', MOBILE);
@@ -208,7 +237,7 @@
         rec.state = 'in'; rec.target = bigR; rec.at = now + k++ * 70; rec.engaged = false; rec.arrived = false;
         active.add(rec);
       }
-      countEl.textContent = n ? `${n} шт.` : '';
+      countEl.textContent = n ? t('count', { n }) : '';
       return;
     }
     const used = new Set();
@@ -237,7 +266,7 @@
       rec.state = 'in'; rec.target = bigR; rec.at = now + inIdx++ * 22; rec.engaged = false; rec.arrived = false;
       active.add(rec);
     }
-    countEl.textContent = n ? `${n} шт.` : '';
+    countEl.textContent = n ? t('count', { n }) : '';
   }
 
   function applyForces(now) {
@@ -416,22 +445,19 @@
     const rows = MOBILE ? 2 : 3;
     const clusterBottom = lineY + 10 + spacing * 0.94 * rows + spacing * 0.6;
     const pileTop = H - Math.max(130, H * 0.34);
-    let mid = (clusterBottom + pileTop) / 2, hgt = clamp((pileTop - clusterBottom) * 0.92, 130, 290);
+    let mid = (clusterBottom + pileTop) / 2, hgt = clamp((pileTop - clusterBottom) * 0.92, 110, 290);
     const slotTop = mid - hgt / 2, slotBottom = mid + hgt / 2;
-    const fireBottom = slotBottom - 44; // the last 44px under the flames belong to the switch
+    const fireBottom = slotBottom;
     return { x0: W - clamp(W * 0.05, 56, 90), top: slotTop, bottom: fireBottom, mid: (slotTop + fireBottom) / 2, hgt: fireBottom - slotTop, btnTop: slotBottom - 34 };
   }
 
   const fireBtn = document.getElementById('fireBtn');
-  let fireBtnPos = '';
-  function placeFireBtn(fz) {
-    const l = Math.round(offX + W - 66), t = Math.round(offY + fz.btnTop), key = l + ',' + t;
-    if (key !== fireBtnPos) { fireBtnPos = key; fireBtn.style.left = l + 'px'; fireBtn.style.top = t + 'px'; }
-  }
+  function placeFireBtn() {}
   function paintFireBtn() {
     fireBtn.classList.toggle('on', fireOn);
     fireBtn.setAttribute('aria-checked', fireOn ? 'true' : 'false');
-    fireBtn.title = fireOn ? 'Огонь включён (нажми, чтобы погасить)' : 'Огонь выключен (нажми, чтобы зажечь)';
+    fireBtn.title = t(fireOn ? 'fire.on' : 'fire.off');
+    fireBtn.parentElement.classList.toggle('off', !fireOn);
   }
   paintFireBtn();
   fireBtn.addEventListener('click', () => {
@@ -756,13 +782,13 @@
 Return Unicode emojis that fit the WHOLE text, in two kinds:
 1) OBVIOUS: strongly and directly relevant emojis.
 2) CREATIVE: emojis whose look can be read, logically and wittily, as relevant even though that is not their usual meaning. Examples: the sweating smiley fits "running" or "gym" (it is sweating from effort); the crying-laughing smiley fits "motorbike" (speed blows the tears and spit sideways).
-Order: the most obvious first, creative ones after them. Every item needs a defensible link; no random filler.
+Focus on WHAT THE TEXT ASKS ABOUT, not only on its subject. Example: for "happiness for a cat" prefer what makes a cat happy (fish, sleep, toys, sun, cozy things); for "food for a dog" prefer bone, meat, bowl. Use the subject's own face/animal emoji at most once, and put it last.\nOrder: the most obvious first, creative ones after them. Every item needs a defensible link; no random filler.
 The text is cumulative: later words narrow or modify the earlier ones (e.g. "what to wear" then "in winter" drops summer items).
 At most MAX items; each item is a single emoji character; if the text is empty or meaningless return an empty array.`;
 
   const PROMPT_OBV = `You are the semantic engine of an emoji picker. The user is typing a text line (any language).
 Return the Unicode emojis that are directly and clearly relevant to the WHOLE text: the obvious, recognizable choices a normal person would expect (objects, people, animals, places, actions and symbols that literally belong to the topic). No far-fetched or joking links.
-Order from the most to the least relevant. The text is cumulative: later words narrow or modify the earlier ones (e.g. "what to wear" then "in winter" drops summer items).
+Focus on WHAT THE TEXT ASKS ABOUT, not only on its subject. Example: for "happiness for a cat" prefer what makes a cat happy (fish, sleep, toys, sun, cozy things); for "food for a dog" prefer bone, meat, bowl. Use the subject's own face/animal emoji at most once, and put it last.\nOrder from the most to the least relevant. The text is cumulative: later words narrow or modify the earlier ones (e.g. "what to wear" then "in winter" drops summer items).
 At most MAX items; each item is a single emoji character; if the text is empty or meaningless return an empty array.`;
 
   const STORY = `Turn the user's text into a short emoji story: a sequence of emojis that tells it step by step, in chronological order, like a one-line comic strip.
@@ -788,7 +814,7 @@ Reply as JSON {"fits": boolean, "reason": string}. The reason is in English, ONE
     if (key) return { url: `https://generativelanguage.googleapis.com/v1beta/models/${m}:generateContent`, headers: { 'Content-Type': 'application/json', 'x-goog-api-key': key } };
     const code = store.get('access_code');
     if (proxyUrl() && code) return { url: `${proxyUrl()}/v1beta/models/${m}:generateContent`, headers: { 'Content-Type': 'application/json', 'x-access-code': code } };
-    throw new Error('Нужен код доступа или API-ключ — нажми ⚙');
+    throw new Error(t('err.access'));
   }
 
   async function geminiJSON(prompt, schema, signal) {
@@ -860,21 +886,21 @@ Reply as JSON {"fits": boolean, "reason": string}. The reason is in English, ONE
     text = text.trim();
     if (inflight) inflight.abort();
     if (text !== lastText) { forced.clear(); banned.clear(); lastText = text; }
-    if (!text) { setResults([]); setStatus('Напиши что-нибудь, например: что надеть зимой'); return; }
+    if (!text) { setResults([]); setStatus(t(mode === 'story' ? 'status.story' : 'status.magnet')); return; }
     const key = mode + '|' + (creative ? 'c' : 'o') + '|' + text;
-    if (cache.has(key)) { setResults(cache.get(key)); setStatus('Готово'); return; }
+    if (cache.has(key)) { setResults(cache.get(key)); setStatus(t('status.done')); return; }
     const ac = inflight = new AbortController();
-    setStatus('Думаю…');
+    setStatus(t('status.thinking'));
     try {
       const list = DEMO ? demoPick(text) : await callGemini(text, ac.signal);
       if (ac.signal.aborted) return;
       cache.set(key, list);
       setResults(list);
       if (list.length) hist.add(text, list);
-      setStatus(list.length ? 'Готово' : 'Ничего не нашлось');
+      setStatus(t(list.length ? 'status.done' : 'status.none'));
     } catch (e) {
       if (e.name === 'AbortError') return;
-      setStatus('Ошибка: ' + e.message, true);
+      setStatus(t('status.error') + e.message, true);
     }
   }
 
@@ -1012,7 +1038,7 @@ Reply as JSON {"fits": boolean, "reason": string}. The reason is in English, ONE
   }
   async function copyRow() {
     const text = rowText();
-    if (!text) { toast('Нечего копировать'); return; }
+    if (!text) { toast(t('copy.none')); return; }
     let ok = false;
     try { await navigator.clipboard.writeText(text); ok = true; } catch {}
     if (!ok) {
@@ -1022,10 +1048,54 @@ Reply as JSON {"fits": boolean, "reason": string}. The reason is in English, ONE
       try { ok = document.execCommand('copy'); } catch {}
       ta.remove();
     }
-    toast(ok ? `Скопировано: ${text}` : 'Не получилось скопировать');
+    toast(ok ? t('copy.ok', { text }) : t('copy.fail'));
     if (ok) { fx.attach(); fx.buzz([30, 40, 30]); }
   }
   document.getElementById('copyBtn').addEventListener('click', copyRow);
+
+  // ---------- peel off the extras: keep only what really answers the text ----------
+  const peelBtn = document.getElementById('peelBtn');
+  let peelBusy = false;
+  async function peelExtras() {
+    if (mode !== 'magnet') { toast(t('peel.only')); return; }
+    const shown = Array.from(active).filter(r => r.body);
+    const text = field.value.trim();
+    if (!shown.length || !text) { toast(t('peel.empty')); return; }
+    if (peelBusy) return;
+    peelBusy = true; peelBtn.classList.add('busy'); toast(t('peel.work'));
+    try {
+      let keep;
+      if (DEMO) { await new Promise(x => setTimeout(x, 400)); keep = shown.slice(-3).map(r => r.c); }
+      else {
+        const list = shown.map(r => `${r.c} ${r.name}`).join('\n');
+        const res = await geminiJSON(`The user typed: "${text}"
+These emojis are currently stuck to the line as matches:
+${list}
+
+Keep ONLY the emojis that answer what the text asks for. Drop emojis that merely show the subject itself (faces of the same animal or person, hearts, generic smileys) or that are only loosely related.
+Example: for "happiness for a cat" drop all cat faces and keep fish, sleep, toys, sun, something cozy. For "gift for a dog" drop dog faces and keep bone, ball, meat, a walk in the park.
+Keep the 3 to 6 most essential emojis (fewer if fewer really fit). Copy them exactly from the list.
+Reply JSON {"keep": [emoji, ...]}.`,
+          { type: 'OBJECT', properties: { keep: { type: 'ARRAY', items: { type: 'STRING' } } }, required: ['keep'] });
+        const seg = new Intl.Segmenter(undefined, { granularity: 'grapheme' });
+        keep = [];
+        for (const item of res.keep || []) for (const { segment } of seg.segment(String(item))) keep.push(segment);
+      }
+      if (field.value.trim() !== text) return; // the user moved on meanwhile
+      const keepSet = new Set(keep.map(ch => byChar.get(norm(ch))).filter(r => r && active.has(r)));
+      const drop = shown.filter(r => !keepSet.has(r));
+      if (!keepSet.size || !drop.length) { toast(t('peel.same')); return; }
+      for (const r of drop) { banned.add(r); forced.delete(r); }
+      setResults(currentChars);
+      fx.drop(); fx.buzz([20, 30, 20]);
+      toast(t('peel.done', { n: drop.length, k: keepSet.size }));
+    } catch (e) {
+      toast(t('status.error') + e.message);
+    } finally { peelBusy = false; peelBtn.classList.remove('busy'); }
+  }
+  peelBtn.addEventListener('click', peelExtras);
+
+
 
   // ---------- query history ----------
   const histPanel = document.getElementById('histPanel');
@@ -1040,7 +1110,7 @@ Reply as JSON {"fits": boolean, "reason": string}. The reason is in English, ONE
     render() {
       const list = hist.load();
       histPanel.innerHTML = '';
-      if (!list.length) { histPanel.innerHTML = '<div class="hempty">Пока пусто — попробуй что-нибудь написать</div>'; return; }
+      if (!list.length) { histPanel.innerHTML = '<div class="hempty">' + t('hist.empty') + '</div>'; return; }
       for (const h of list) {
         const b = document.createElement('button');
         b.className = 'hitem';
@@ -1054,12 +1124,12 @@ Reply as JSON {"fits": boolean, "reason": string}. The reason is in English, ONE
           setMode(h.m);
           field.value = h.t; lastText = h.t;
           cache.set(h.m + '|' + (creative ? 'c' : 'o') + '|' + h.t, h.c);
-          setResults(h.c); setStatus('Из истории');
+          setResults(h.c); setStatus(t('status.history'));
         });
         histPanel.appendChild(b);
       }
       const clr = document.createElement('button');
-      clr.className = 'hclear'; clr.textContent = 'Очистить историю';
+      clr.className = 'hclear'; clr.textContent = t('hist.clear');
       clr.addEventListener('click', () => { store.set('emodji_history', '[]'); hist.render(); });
       histPanel.appendChild(clr);
     },
@@ -1140,14 +1210,14 @@ Reply JSON {"topic": string, "emoji": string}. The topic is 1-4 simple English w
         const pool = recs.filter(r => r.group !== 'Flags');
         rec = pickOne(pool); topic = pickOne(TOPICS);
       }
-      field.value = 'Тема: ' + topic;
+      field.value = t('defend.topic') + ': ' + topic;
       setResults([rec.c]);
       const s = stats.get().defend || { rounds: 0, sum: 0, best: 0 };
-      setStatus(s.rounds ? `Раундов: ${s.rounds} · средний балл ${(s.sum / s.rounds).toFixed(1)} · рекорд ${s.best}` : 'Защити смайлик: докажи, что он подходит к теме');
+      setStatus(s.rounds ? t('defend.stats', { r: s.rounds, a: (s.sum / s.rounds).toFixed(1), b: s.best }) : t('defend.intro'));
       const r = game.round = { kind: 'defend', rec, topic, done: false };
       r.panel = () => showPanel({
         emoji: rec.c, pill: 'defend it!', text: `Why does ${rec.c} fit “${topic}”? Be clever — logic and wit score points.`,
-        input: 'Your defence… (Enter)', actions: [{ label: 'Другой смайлик ↻', fn: () => game.newDefend() }],
+        input: 'Your defence… (Enter)', actions: [{ label: t('defend.other'), fn: () => game.newDefend() }],
       });
       r.panel();
     },
@@ -1171,12 +1241,12 @@ Reply JSON {"score": integer, "comment": string, "better": string}. The comment 
         r.done = true;
         const all = stats.get(); const s = all.defend || { rounds: 0, sum: 0, best: 0 };
         s.rounds++; s.sum += score; s.best = Math.max(s.best, score); all.defend = s; stats.put(all);
-        setStatus(`Раундов: ${s.rounds} · средний балл ${(s.sum / s.rounds).toFixed(1)} · рекорд ${s.best}`);
+        setStatus(t('defend.stats', { r: s.rounds, a: (s.sum / s.rounds).toFixed(1), b: s.best }));
         if (score >= 6) fx.win(); else fx.wrong();
         r.panel = () => showPanel({
           emoji: r.rec.c, pill: `${score}/10`, pillClass: score >= 6 ? 'yes' : 'no',
           text: res.comment + (res.better ? `\n\n💡 My 10/10 take:\n${res.better}` : ''),
-          actions: [{ label: 'Следующий раунд ▶', primary: true, fn: () => game.newDefend() }],
+          actions: [{ label: t('defend.next'), primary: true, fn: () => game.newDefend() }],
         });
         r.panel();
       } catch (e) {
@@ -1190,7 +1260,7 @@ Reply JSON {"score": integer, "comment": string, "better": string}. The comment 
     async newGuess() {
       const r = game.round = { kind: 'guess', loading: true };
       field.value = ''; setResults([]);
-      setStatus('Загадываю слово…');
+      setStatus(t('guess.picking'));
       showPanel({ emoji: '❓', pill: 'thinking…', text: 'Picking a secret word…' });
       try {
         let res;
@@ -1208,19 +1278,19 @@ Reply JSON {"word": string, "accept": [string], "hints": [string]}.`,
         const seen = new Set();
         r.hints = (res.hints || []).map(h => ensureRec(String(h)))
           .filter(x => x && !seen.has(x) && seen.add(x)).map(x => x.c);
-        if (r.hints.length < 3) throw new Error('не вышло подобрать подсказки, попробуй ещё');
+        if (r.hints.length < 3) throw new Error(t('guess.fail'));
         r.word = String(res.word || '');
         r.accept = [r.word, ...(res.accept || [])].map(cleanWord).filter(Boolean);
         r.shown = Math.min(3, r.hints.length); r.wrong = 0; r.loading = false; r.done = false;
         setResults(r.hints.slice(0, r.shown));
-        setStatus('Угадай слово по смайликам и напиши его в строке');
-        field.placeholder = 'Твой ответ… (Enter)';
+        setStatus(t('guess.status'));
+        field.placeholder = t('ph.guess');
         r.panel = () => game.guessPanel();
         r.panel();
       } catch (e) {
         if (game.round !== r) return;
-        setStatus('Ошибка: ' + e.message, true);
-        showPanel({ emoji: '❓', pill: 'error', pillClass: 'no', text: e.message, actions: [{ label: 'Ещё раз ↻', primary: true, fn: () => game.newGuess() }] });
+        setStatus(t('status.error') + e.message, true);
+        showPanel({ emoji: '❓', pill: 'error', pillClass: 'no', text: e.message, actions: [{ label: t('guess.again'), primary: true, fn: () => game.newGuess() }] });
       }
     },
     points() { const r = game.round; return Math.max(1, 10 - (r.shown - 3) * 2 - r.wrong); },
@@ -1230,8 +1300,8 @@ Reply JSON {"word": string, "accept": [string], "hints": [string]}.`,
         emoji: '❓', pill: `hint ${r.shown}/${r.hints.length}`,
         text: (extra ? extra + ' ' : '') + `Guess the word! It's worth ${game.points()} points now.`,
         actions: [
-          ...(r.shown < r.hints.length ? [{ label: '+ подсказка', fn: () => { r.shown++; setResults(r.hints.slice(0, r.shown)); game.guessPanel(); } }] : []),
-          { label: 'Сдаюсь', fn: () => game.endGuess(false) },
+          ...(r.shown < r.hints.length ? [{ label: t('guess.hint'), fn: () => { r.shown++; setResults(r.hints.slice(0, r.shown)); game.guessPanel(); } }] : []),
+          { label: t('guess.giveup'), fn: () => game.endGuess(false) },
         ],
       });
     },
@@ -1255,11 +1325,11 @@ Reply JSON {"word": string, "accept": [string], "hints": [string]}.`,
       s.rounds++; if (won) s.wins++; s.points += pts; all.guess = s; stats.put(all);
       setResults(r.hints);
       if (won) fx.win();
-      setStatus(`Угадано ${s.wins} из ${s.rounds} · очков ${s.points}`);
+      setStatus(t('guess.stats', { w: s.wins, r: s.rounds, p: s.points }));
       r.panel = () => showPanel({
         emoji: won ? '🎉' : '🙈', pill: won ? `+${pts}` : 'the word', pillClass: won ? 'yes' : 'no',
         text: won ? `Yes! The word was “${r.word}”.` : `The word was “${r.word}”.`,
-        actions: [{ label: 'Новое слово ▶', primary: true, fn: () => game.newGuess() }],
+        actions: [{ label: t('guess.new'), primary: true, fn: () => game.newGuess() }],
       });
       r.panel();
     },
@@ -1269,32 +1339,33 @@ Reply JSON {"word": string, "accept": [string], "hints": [string]}.`,
   // ---------- difficulty toggle: obvious (default) / creative ----------
   const diffBtn = document.getElementById('diffBtn');
   function paintDiff() {
-    diffBtn.textContent = creative ? '✨ Креативные' : '😀 Очевидные';
+    diffBtn.textContent = t(creative ? 'diff.c' : 'diff.o');
     diffBtn.classList.toggle('on', creative);
-    diffBtn.title = creative ? 'Креативные: добавляет неочевидные остроумные связи' : 'Очевидные: только понятные смайлики';
+    diffBtn.title = t(creative ? 'diff.cT' : 'diff.oT');
   }
   paintDiff();
   diffBtn.addEventListener('click', () => {
     creative = !creative;
     try { localStorage.setItem('opt_creative', creative ? '1' : '0'); } catch (e) {}
     paintDiff(); fx.tap();
-    toast(creative ? '✨ Креативные: добавлены неочевидные связи' : '😀 Очевидные: только понятные смайлики');
+    toast(t(creative ? 'diff.toastC' : 'diff.toastO'));
     if (mode === 'defend') game.newDefend();
     else if (mode === 'guess') game.newGuess();
     else if (field.value.trim()) { forced.clear(); banned.clear(); lastText = ''; run(field.value); }
   });
 
   // ---------- modes ----------
-  const PLACEHOLDER = { magnet: 'Что хочешь найти?', story: 'Расскажи историю: мой понедельник…', defend: '', guess: 'Твой ответ… (Enter)' };
+  const PLACEHOLDER = { magnet: t('ph.magnet'), story: t('ph.story'), defend: '', guess: t('ph.guess') };
   const HINT = {
-    magnet: 'Напиши что-нибудь, например: что надеть зимой',
-    story: 'Напиши ситуацию — смайлики расскажут её по порядку',
+    magnet: t('status.magnet'),
+    story: t('status.story'),
   };
   function setMode(m) {
     if (inflight) inflight.abort();
     clearTimeout(timer);
     mode = m;
     document.querySelectorAll('#modes button').forEach(b => b.classList.toggle('on', b.dataset.mode === m));
+    document.getElementById('peelBtn').classList.toggle('dim', m !== 'magnet');
     hideBubble(); histPanel.classList.remove('open');
     forced.clear(); banned.clear(); lastText = '';
     game.round = null;
@@ -1403,9 +1474,9 @@ Return up to 4 real Unicode emojis that best match what they mean, the most exac
     if (!chars.some(c => allEntries.has(norm(c)))) chars = localSearch(q);
     const found = [];
     for (const ch of chars) { const rec = ensureRec(ch); if (rec && !found.includes(rec)) found.push(rec); if (found.length >= 4) break; }
-    if (!found.length) { toast('Не нашёл такой смайлик'); return; }
+    if (!found.length) { toast(t('search.none')); return; }
     found.forEach((rec, i) => toss(rec, i * 160));
-    toast('Смотри, где он подлетел: ' + found.map(r => r.c).join(' '));
+    toast(t('search.look', { list: found.map(r => r.c).join(' ') }));
   }
 
   let searchTimer = 0;
@@ -1440,7 +1511,7 @@ Return up to 4 real Unicode emojis that best match what they mean, the most exac
     const TTS_MODEL = 'gemini-2.5-flash-preview-tts';
 
     function browserSay(text) {
-      if (!synthOk) { toast('Озвучка не поддерживается в этом браузере'); return; }
+      if (!synthOk) { toast(t('tts.no')); return; }
       speechSynthesis.cancel();
       const u = new SpeechSynthesisUtterance(text);
       u.lang = 'en-US'; u.rate = 0.9;
@@ -1594,14 +1665,14 @@ Reply JSON {"ok": boolean, "corrected": string, "note": string}.`,
       if (undo && now - undo.t < 9000 && active.size === 0) { // shake again: bring them back
         for (const ch of undo.forced) { const r = byChar.get(norm(ch)); if (r) forced.add(r); }
         setResults(undo.chars);
-        undo = null; toast('Смайлики вернулись'); fx.buzz([30, 40, 30]);
+        undo = null; toast(t('shake.back')); fx.buzz([30, 40, 30]);
         return;
       }
       if (!active.size) return;
       undo = { t: now, chars: currentChars.slice(), forced: [...forced].map(r => r.c) };
       forced.clear(); banned.clear();
       setResults([]);
-      toast('Все упали! Тряхни ещё раз — вернутся');
+      toast(t('shake.fell'));
       fx.buzz([60, 40, 60, 40, 120]);
     }
     function onMotion(e) {
@@ -1641,11 +1712,6 @@ Reply JSON {"ok": boolean, "corrected": string, "note": string}.`,
   // ---------- welcome / how-to (shown once after the first successful setup) ----------
   const welcome = document.getElementById('welcome');
   const setupHint = document.getElementById('setupHint');
-  document.getElementById('wDevice').innerHTML =
-    '<b>Два режима</b> (переключатель справа над строкой):<br>' +
-    '😀 <b>Очевидные</b> (по умолчанию): всё просто, только понятные смайлики. Так легче, и именно так лучше играть.<br>' +
-    '✨ <b>Креативные</b>: к очевидным добавляются неочевидные, остроумные связи. Интереснее, но в играх сложнее.<br>' +
-    '<span style="color:var(--muted)">Любой другой смайлик можно добрать самому: найди его в куче (или через 🔍) и подтащи к строке.</span>';
   function showWelcome() { welcome.classList.add('open'); welcome.scrollTop = 0; }
   function hideWelcome() { welcome.classList.remove('open'); store.set('seen_intro', '1'); field.focus(); }
   function maybeIntro() {
@@ -1664,24 +1730,34 @@ Reply JSON {"ok": boolean, "corrected": string, "note": string}.`,
   const openModal = () => {
     const savedKey = store.get('gemini_key');
     keyInput.value = ''; // never put the saved key back into the field
-    keyInput.placeholder = savedKey ? `Сохранён (…${savedKey.slice(-4)}). Введи новый, чтобы заменить` : 'AIza…';
+    keyInput.placeholder = savedKey ? t('set.keySaved', { tail: savedKey.slice(-4) }) : 'AIza…';
     accessInput.value = '';
-    accessInput.placeholder = store.get('access_code') ? 'Сохранён. Введи новый, чтобы заменить' : 'Код от владельца приложения';
+    accessInput.placeholder = store.get('access_code') ? t('set.codeSaved') : t('set.codePh');
     proxyInput.value = store.get('proxy_url');
     proxyInput.placeholder = DEFAULT_PROXY || 'https://….workers.dev';
     modelInput.value = store.get('gemini_model');
     optSound.checked = prefs.sound; optVibe.checked = prefs.vibe; optTilt.checked = prefs.tilt; optShake.checked = prefs.shake;
     ttsModelInput.value = store.get('gemini_tts_model');
-    vibeNote.textContent = navigator.vibrate ? '' : 'Этот браузер не поддерживает вибрацию (на iPhone её нет вообще).';
+    vibeNote.textContent = navigator.vibrate ? '' : t('set.noVibe');
     setupHint.classList.toggle('show', !hasAccess());
     modal.classList.add('open'); if (hasAccess()) keyInput.focus(); else accessInput.focus();
   };
   const closeModal = () => { modal.classList.remove('open'); field.focus(); };
   document.getElementById('gear').addEventListener('click', openModal);
   document.getElementById('cancelBtn').addEventListener('click', closeModal);
+  document.querySelectorAll('#langSel button').forEach(b => {
+    b.classList.toggle('on', b.dataset.lang === lang);
+    b.addEventListener('click', () => {
+      if (b.dataset.lang === lang) return;
+      if (keyInput.value.trim()) store.set('gemini_key', keyInput.value.trim()); // do not lose what was typed
+      if (accessInput.value.trim()) store.set('access_code', accessInput.value.trim());
+      store.set('lang', b.dataset.lang);
+      location.reload();
+    });
+  });
   document.getElementById('forgetBtn').addEventListener('click', () => {
     store.set('gemini_key', ''); store.set('access_code', '');
-    toast('Ключ и код удалены из этого браузера'); closeModal(); openModal();
+    toast(t('set.forgot')); closeModal(); openModal();
   });
   document.getElementById('saveBtn').addEventListener('click', () => {
     if (keyInput.value.trim()) store.set('gemini_key', keyInput.value.trim());
@@ -1735,6 +1811,7 @@ Reply JSON {"ok": boolean, "corrected": string, "note": string}.`,
 
   // ---------- boot ----------
   (async () => {
+    applyI18n();
     measure();
     const list = MOBILE
       ? window.EMOJI_DATA.filter((e, i) => e[3] && i % 10 < 7) // main emojis only
