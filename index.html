@@ -171,6 +171,14 @@
   .tbtn .ico { width: 26px; height: 26px; filter: drop-shadow(0 1px 1px rgba(0,0,0,.4)); }
   body.mobile .tbtn .ico { width: 22px; height: 22px; }
   .icoSlot { display: inline-flex; }
+  /* no native blue tap-highlight square / text-like selection on the panel buttons and their icons */
+  .tbtn, #tools, #tools * , #diffBtn, #fireBtn, #searchClose {
+    -webkit-tap-highlight-color: transparent; -webkit-touch-callout: none;
+    -webkit-user-select: none; user-select: none;
+  }
+  .tbtn { outline: none; }
+  .tbtn:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+  .ico, .ico * { -webkit-user-select: none; user-select: none; -webkit-user-drag: none; }
   .tbtn.dim { opacity: .38; }
   .tbtn.busy { opacity: .6; pointer-events: none; }
   .lrow { display: flex; align-items: center; justify-content: space-between; gap: 12px; font-size: 13px; color: var(--muted); }
@@ -274,8 +282,8 @@
   body.mobile #card { margin: 0 auto; padding: 16px; gap: 10px; }
   body.mobile #card .row { position: sticky; bottom: -16px; margin: 4px -16px -16px; padding: 10px 16px; background: #15173a; border-top: 1px solid var(--glass-b); }
 </style>
-<link rel="stylesheet" href="icons-anim.css?v=24">
-<link rel="stylesheet" href="icon-anim.css?v=24">
+<link rel="stylesheet" href="icons-anim.css?v=25">
+<link rel="stylesheet" href="icon-anim.css?v=25">
 </head>
 <body>
 <canvas id="world"></canvas>
@@ -343,7 +351,7 @@
 
 <div id="modal">
   <div id="card">
-    <h2><span data-i18n="set.title"></span> <small id="verNote" style="font-weight:400;color:var(--muted)">v24</small></h2>
+    <h2><span data-i18n="set.title"></span> <small id="verNote" style="font-weight:400;color:var(--muted)">v25</small></h2>
     <div class="lrow"><span data-i18n="set.lang"></span>
       <div id="langSel"><button type="button" data-lang="en">English</button><button type="button" data-lang="ru">Русский</button></div>
     </div>
@@ -380,9 +388,9 @@
 </div>
 
 <script src="matter.min.js"></script>
-<script src="emoji-data.js?v=24"></script>
-<script src="i18n.js?v=24"></script>
-<script src="icon-anim.js?v=24"></script>
-<script src="app.js?v=24"></script>
+<script src="emoji-data.js?v=25"></script>
+<script src="i18n.js?v=25"></script>
+<script src="icon-anim.js?v=25"></script>
+<script src="app.js?v=25"></script>
 </body>
 </html>
