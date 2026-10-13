@@ -115,9 +115,10 @@
     const r = field.getBoundingClientRect();
     lineX = r.left + r.width / 2 - offX; lineW = r.width; lineY = r.bottom - offY;
     bigR = MOBILE ? 16 : clamp(lineW / 40, 15, 24);
-    spacing = bigR * 2.08;
+    spacing = bigR * 2.3; // a little air between the emojis stuck to the line
     perRow = Math.max(4, Math.floor((lineW - 24) / spacing));
     maxMatched = MOBILE ? Math.min(perRow * 2, 20) : Math.min(perRow * 5, 90);
+    if (typeof placeChips === 'function' && chipsEl) placeChips();
   }
 
   function slotPos(i) {
@@ -126,9 +127,12 @@
       x: lineX - (perRow - 1) / 2 * spacing + k * spacing,
       y: lineY + 10 + spacing * 0.5 + row * spacing * 0.94,
     };
-    const off = k === 0 ? 0 : (k % 2 ? (k + 1) / 2 : -k / 2); // centre outward
+    // centre outward, symmetric for both odd and even row lengths
+    const off = perRow % 2 === 0
+      ? (k % 2 === 0 ? k / 2 + 0.5 : -((k - 1) / 2 + 0.5))
+      : (k === 0 ? 0 : (k % 2 ? (k + 1) / 2 : -k / 2));
     return {
-      x: lineX + off * spacing + (perRow % 2 === 0 ? spacing / 2 : 0),
+      x: lineX + off * spacing,
       y: lineY + 10 + spacing * 0.5 + row * spacing * 0.94,
     };
   }
@@ -238,6 +242,7 @@
         active.add(rec);
       }
       countEl.textContent = n ? t('count', { n }) : '';
+    updateChips();
       return;
     }
     const used = new Set();
@@ -267,6 +272,7 @@
       active.add(rec);
     }
     countEl.textContent = n ? t('count', { n }) : '';
+    updateChips();
   }
 
   function applyForces(now) {
@@ -882,11 +888,17 @@ Reply as JSON {"fits": boolean, "reason": string}. The reason is in English, ONE
 
   function setStatus(msg, err) { statusEl.textContent = msg; statusEl.classList.toggle('err', !!err); }
 
-  async function run(text) {
+  async function run(text, opts) {
     text = text.trim();
     if (inflight) inflight.abort();
     if (text !== lastText) { forced.clear(); banned.clear(); lastText = text; }
     if (!text) { setResults([]); setStatus(t(mode === 'story' ? 'status.story' : 'status.magnet')); return; }
+    const ex = mode === 'magnet' ? findExample(text) : null;
+    if (ex && ((opts && opts.example) || !hasAccess())) { // ready-made example: instant, no AI call
+      setResults(creative ? ex.o.concat(ex.c) : ex.o);
+      setStatus(t('status.example'));
+      return;
+    }
     const key = mode + '|' + (creative ? 'c' : 'o') + '|' + text;
     if (cache.has(key)) { setResults(cache.get(key)); setStatus(t('status.done')); return; }
     const ac = inflight = new AbortController();
@@ -906,6 +918,7 @@ Reply as JSON {"fits": boolean, "reason": string}. The reason is in English, ONE
 
   let timer = 0;
   field.addEventListener('input', () => {
+    updateChips();
     if (mode === 'defend' || mode === 'guess') return;
     hideBubble();
     clearTimeout(timer);
@@ -1740,6 +1753,7 @@ Reply JSON {"ok": boolean, "corrected": string, "note": string}.`,
     ttsModelInput.value = store.get('gemini_tts_model');
     vibeNote.textContent = navigator.vibrate ? '' : t('set.noVibe');
     setupHint.classList.toggle('show', !hasAccess());
+    tryBtn.classList.toggle('show', !hasAccess());
     modal.classList.add('open'); if (hasAccess()) keyInput.focus(); else accessInput.focus();
   };
   const closeModal = () => { modal.classList.remove('open'); field.focus(); };
@@ -1809,6 +1823,37 @@ Reply JSON {"ok": boolean, "corrected": string, "note": string}.`,
   window.addEventListener('resize', onResize);
   if (MOBILE && vv) { vv.addEventListener('resize', onResize); vv.addEventListener('scroll', onResize); }
 
+
+  // ---------- ready-made examples: chips under the line, work without an access code ----------
+  const chipsEl = document.getElementById('chips');
+  const tryBtn = document.getElementById('tryBtn');
+  function findExample(text) {
+    const q = text.trim().toLowerCase();
+    return (window.EXAMPLES || []).find(ex => ex.en.toLowerCase() === q || ex.ru.toLowerCase() === q) || null;
+  }
+  function buildChips() {
+    chipsEl.innerHTML = '';
+    (window.EXAMPLES || []).forEach(ex => {
+      const b = document.createElement('button');
+      b.type = 'button'; b.className = 'chip'; b.textContent = lang === 'ru' ? ex.ru : ex.en;
+      b.addEventListener('click', () => {
+        fx.unlock(); fx.tap();
+        field.value = b.textContent; lastText = '';
+        run(field.value, { example: true });
+      });
+      chipsEl.appendChild(b);
+    });
+  }
+  function placeChips() {
+    chipsEl.style.left = (offX + lineX - lineW / 2) + 'px';
+    chipsEl.style.top = (offY + lineY + 12) + 'px';
+    chipsEl.style.width = lineW + 'px';
+  }
+  function updateChips() {
+    chipsEl.classList.toggle('hide', !(mode === 'magnet' && !active.size && !field.value.trim() && !probe.size));
+  }
+  tryBtn.addEventListener('click', () => { closeModal(); store.set('seen_intro', '1'); });
+
   // ---------- animated icons (see icon-anim.js) ----------
   function initIcons() {
     if (!window.IconAnim) return; // the static drawings stay if the script is missing
@@ -1826,6 +1871,7 @@ Reply JSON {"ok": boolean, "corrected": string, "note": string}.`,
   (async () => {
     applyI18n();
     initIcons();
+    buildChips();
     measure();
     const list = MOBILE
       ? window.EMOJI_DATA.filter((e, i) => e[3] && i % 10 < 7) // main emojis only
