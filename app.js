@@ -1070,6 +1070,7 @@ Reply as JSON {"fits": boolean, "reason": string}. The reason is in English, ONE
   const peelBtn = document.getElementById('peelBtn');
   let peelBusy = false;
   async function peelExtras() {
+    if (mode === 'guess') { game.trim(); return; }
     if (mode !== 'magnet') { toast(t('peel.only')); return; }
     const shown = Array.from(active).filter(r => r.body);
     const text = field.value.trim();
@@ -1271,21 +1272,23 @@ Reply JSON {"score": integer, "comment": string, "better": string}. The comment 
 
     // ---- Guess the word ----
     async newGuess() {
-      const r = game.round = { kind: 'guess', loading: true };
+      const cat = game.cat();
+      const r = game.round = { kind: 'guess', loading: true, cat, menu: false };
       field.value = ''; setResults([]);
       setStatus(t('guess.picking'));
-      showPanel({ emoji: '❓', pill: 'thinking…', text: 'Picking a secret word…' });
+      showPanel({ emoji: CAT_ICON[cat], pill: 'thinking…', text: 'Picking something to guess…', actions: [] });
       try {
         let res;
-        if (DEMO) res = { word: 'heart', accept: ['heart', 'сердце'], hints: recs.filter(x => x.name.includes('heart')).slice(0, 8).map(x => x.c) };
+        if (DEMO) res = { word: 'Hachiko', accept: ['hachiko', 'hachi', 'хатико', 'хатико самый верный друг'], hints: ['🐕', '🚉', '🍂', '⏳', '❤️', '🇯🇵', '🎬', '😢'] };
         else {
-          const recent = (() => { try { return JSON.parse(store.get('emodji_recent_words') || '[]'); } catch { return []; } })();
-          res = await geminiJSON(`Game "Guess the word by emojis". Secretly pick ONE common, concrete English noun from the category "${pickOne(CATEGORIES)}". Avoid: ${recent.join(', ') || 'nothing'}.
-${creative ? "Give 8 emoji hints ordered from the most creative / indirect (witty readings of an emoji's look are great) to the most obvious (the last ones almost give it away)." : 'Give 8 emoji hints that are plain, recognizable emojis directly related to the word (typical objects, actions, places, things it is made of or used with), ordered from the more general to the most specific. Even the first hint should already point in the right direction.'} Each hint is a single emoji, no repeats.
-Also give "accept": all acceptable answers in lowercase — the word, close synonyms and plural, in English AND in Russian.
-Reply JSON {"word": string, "accept": [string], "hints": [string]}.`,
+          const key = 'emodji_recent_' + cat;
+          const recent = (() => { try { return JSON.parse(store.get(key) || '[]'); } catch { return []; } })();
+          res = await geminiJSON(`Game "Guess it by emojis". ${CAT_PROMPT[cat]} Avoid these recent ones: ${recent.join(', ') || 'none'}.
+${creative ? "Give 8 emoji hints ordered from the most creative / indirect (witty readings of an emoji's look are great) to the most obvious (the last ones almost give it away)." : 'Give 8 emoji hints that are plain, recognizable emojis tied to the story, theme, characters or setting, ordered from the more general to the most specific. Even the first hint should already point in the right direction.'} Each hint is a single emoji, no repeats; do not use country flags or letters that simply spell the answer.
+Also give "accept": all acceptable answers in lowercase: the title/name in English AND in Russian, common short forms and alternative titles.
+Reply JSON {"word": string, "accept": [string], "hints": [string]}. "word" is the answer as it should be shown to the player.`,
             { type: 'OBJECT', properties: { word: { type: 'STRING' }, accept: { type: 'ARRAY', items: { type: 'STRING' } }, hints: { type: 'ARRAY', items: { type: 'STRING' } } }, required: ['word', 'accept', 'hints'] });
-          store.set('emodji_recent_words', JSON.stringify([res.word, ...recent].slice(0, 20)));
+          store.set(key, JSON.stringify([res.word, ...recent].slice(0, 25)));
         }
         if (game.round !== r) return;
         const seen = new Set();
@@ -1295,28 +1298,54 @@ Reply JSON {"word": string, "accept": [string], "hints": [string]}.`,
         r.word = String(res.word || '');
         r.accept = [r.word, ...(res.accept || [])].map(cleanWord).filter(Boolean);
         r.shown = Math.min(3, r.hints.length); r.wrong = 0; r.loading = false; r.done = false;
-        setResults(r.hints.slice(0, r.shown));
-        setStatus(t('guess.status'));
+        r.visible = r.hints.slice(0, r.shown);
+        setResults(r.visible);
+        setStatus(t('guess.status.' + cat));
         field.placeholder = t('ph.guess');
         r.panel = () => game.guessPanel();
         r.panel();
       } catch (e) {
         if (game.round !== r) return;
         setStatus(t('status.error') + e.message, true);
-        showPanel({ emoji: '❓', pill: 'error', pillClass: 'no', text: e.message, actions: [{ label: t('guess.again'), primary: true, fn: () => game.newGuess() }] });
+        r.panel = () => showPanel({ emoji: CAT_ICON[cat], pill: 'error', pillClass: 'no', text: e.message, actions: [{ label: t('guess.again'), primary: true, fn: () => game.newGuess() }, ...game.catActions(r)] });
+        r.panel();
       }
+    },
+    cat() { const c = store.get('guess_cat'); return CAT_ICON[c] ? c : 'movie'; },
+    // the category menu ("▾" unfolds the four choices)
+    catActions(r) {
+      const cur = game.cat();
+      const acts = [{ label: CAT_ICON[cur] + ' ' + t('cat.' + cur) + (r.menu ? ' ▴' : ' ▾'), fn: () => { r.menu = !r.menu; r.panel(); } }];
+      if (r.menu) {
+        for (const c of Object.keys(CAT_ICON)) {
+          if (c === cur) continue;
+          acts.push({ label: CAT_ICON[c] + ' ' + t('cat.' + c), fn: () => { store.set('guess_cat', c); game.newGuess(); } });
+        }
+      }
+      return acts;
+    },
+    // scissors: keep only the three most telling (latest, most obvious) hints on the line
+    trim() {
+      const r = game.round;
+      if (!r || r.kind !== 'guess' || r.loading || r.done) return;
+      if (r.visible.length <= 3) { toast(t('guess.trimNone')); return; }
+      r.visible = r.visible.slice(-3);
+      setResults(r.visible); fx.drop(); fx.buzz([20, 30, 20]);
+      toast(t('guess.trim'));
     },
     points() { const r = game.round; return Math.max(1, 10 - (r.shown - 3) * 2 - r.wrong); },
     guessPanel(extra) {
       const r = game.round;
       showPanel({
-        emoji: '❓', pill: `hint ${r.shown}/${r.hints.length}`,
-        text: (extra ? extra + ' ' : '') + `Guess the word! It's worth ${game.points()} points now.`,
+        emoji: CAT_ICON[r.cat], pill: `hint ${r.shown}/${r.hints.length}`,
+        text: (extra ? extra + ' ' : '') + `Guess the ${CAT_NOUN[r.cat]}! It's worth ${game.points()} points now.`,
         actions: [
-          ...(r.shown < r.hints.length ? [{ label: t('guess.hint'), fn: () => { r.shown++; setResults(r.hints.slice(0, r.shown)); game.guessPanel(); } }] : []),
+          ...(r.shown < r.hints.length ? [{ label: t('guess.hint'), fn: () => { r.visible.push(r.hints[r.shown]); r.shown++; setResults(r.visible); game.guessPanel(); } }] : []),
           { label: t('guess.giveup'), fn: () => game.endGuess(false) },
+          ...game.catActions(r),
         ],
       });
+      r.panel = () => game.guessPanel();
     },
     guess(text) {
       const r = game.round;
@@ -1332,7 +1361,7 @@ Reply JSON {"word": string, "accept": [string], "hints": [string]}.`,
     },
     endGuess(won) {
       const r = game.round;
-      r.done = true;
+      r.done = true; r.menu = false;
       const pts = won ? game.points() : 0;
       const all = stats.get(); const s = all.guess || { rounds: 0, wins: 0, points: 0 };
       s.rounds++; if (won) s.wins++; s.points += pts; all.guess = s; stats.put(all);
@@ -1340,14 +1369,22 @@ Reply JSON {"word": string, "accept": [string], "hints": [string]}.`,
       if (won) fx.win();
       setStatus(t('guess.stats', { w: s.wins, r: s.rounds, p: s.points }));
       r.panel = () => showPanel({
-        emoji: won ? '🎉' : '🙈', pill: won ? `+${pts}` : 'the word', pillClass: won ? 'yes' : 'no',
-        text: won ? `Yes! The word was “${r.word}”.` : `The word was “${r.word}”.`,
-        actions: [{ label: t('guess.new'), primary: true, fn: () => game.newGuess() }],
+        emoji: won ? '🎉' : '🙈', pill: won ? `+${pts}` : 'the answer', pillClass: won ? 'yes' : 'no',
+        text: won ? `Yes! It was “${r.word}”.` : `It was “${r.word}”.`,
+        actions: [{ label: t('guess.new'), primary: true, fn: () => game.newGuess() }, ...game.catActions(r)],
       });
       r.panel();
     },
   };
 
+  const CAT_ICON = { movie: '🎬', book: '📚', person: '⭐', event: '📅' };
+  const CAT_NOUN = { movie: 'movie', book: 'book', person: 'person', event: 'event' };
+  const CAT_PROMPT = {
+    movie: 'Secretly pick ONE well-known feature film (any country or era, one that many people know, including in Russia: a famous hit, a classic or a beloved family film). The answer is its title.',
+    book: 'Secretly pick ONE famous book (a world classic, a well-known novel or a beloved children\'s book that many people know, including in Russia). The answer is its title.',
+    person: 'Secretly pick ONE world-famous person (an actor, singer, scientist, athlete, writer or historical figure that many people know, including in Russia; nobody controversial). The answer is the name (first and last).',
+    event: 'Secretly pick ONE famous event (historical, scientific, sports or cultural, known to many people, for example the Moon landing). The answer is its short name.',
+  };
 
   // ---------- difficulty toggle: obvious (default) / creative ----------
   const diffBtn = document.getElementById('diffBtn');
@@ -1378,7 +1415,7 @@ Reply JSON {"word": string, "accept": [string], "hints": [string]}.`,
     clearTimeout(timer);
     mode = m;
     document.querySelectorAll('#modes button').forEach(b => b.classList.toggle('on', b.dataset.mode === m));
-    document.getElementById('peelBtn').classList.toggle('dim', m !== 'magnet');
+    document.getElementById('peelBtn').classList.toggle('dim', m !== 'magnet' && m !== 'guess');
     hideBubble(); histPanel.classList.remove('open');
     forced.clear(); banned.clear(); lastText = '';
     game.round = null;
